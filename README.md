@@ -1,6 +1,6 @@
-# mjufinder-be
+# teum-backend
 
-mjufinder 프로젝트의 백엔드 API 서버입니다.
+teum (mjufinder) 프로젝트의 백엔드 API 서버입니다.
 
 ## 기술 스택
 
@@ -79,4 +79,5 @@ pytest
 
 ## 연관 레포
 
-- 프론트엔드: [mjufinder-fe](https://github.com/mjufinder/mjufinder-fe)
+- 프론트엔드: [teum-frontend](https://github.com/mjufinder/teum-frontend)
+- 문서: [teum-docs](https://github.com/mjufinder/teum-docs)
