@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+import secrets
+from datetime import date, datetime, time, timedelta
+
+from app.repositories.meeting_repository import MeetingRepository
+
+
+class Meeting:
+    """모임 도메인 객체 (클래스 다이어그램의 MEETING).
+
+    모임 기본 정보 + 공강 탐색 조건 + 초대/공유 정보를 관리한다.
+    DB 입출력은 `MeetingRepository` 에 위임한다.
+    """
+
+    INVITE_TTL = timedelta(days=7)  # 초대 코드 유효 기간
+
+    # ── 속성 (클래스 다이어그램 기준) ──────────────────────────────
+    def __init__(
+        self,
+        *,
+        meeting_id: int | None,
+        name: str,
+        description: str | None,
+        period_start: date,
+        period_end: date,
+        search_start_time: time,
+        search_end_time: time,
+        travel_buffer_min: int,
+        min_duration_min: int,
+        needs_recalc: bool,
+        invite_code: str | None,
+        invite_expires_at: datetime | None,
+        share_token: str | None,
+        deleted_at: datetime | None,
+        repo: MeetingRepository,
+    ):
+        self.meeting_id = meeting_id                  # Long
+        self.name = name                              # String
+        self.description = description                # String
+        self.period_start = period_start              # LocalDate
+        self.period_end = period_end                  # LocalDate
+        self.search_start_time = search_start_time    # LocalTime
+        self.search_end_time = search_end_time        # LocalTime
+        self.travel_buffer_min = travel_buffer_min    # Integer (이동 여유, 분)
+        self.min_duration_min = min_duration_min      # Integer (최소 회의, 분)
+        self.needs_recalc = needs_recalc              # Boolean (재계산 필요 상태)
+        self.invite_code = invite_code                # String
+        self.invite_expires_at = invite_expires_at    # LocalDateTime
+        self.share_token = share_token                # String
+        self.deleted_at = deleted_at                  # LocalDateTime
+        self._repo = repo
+
+    @classmethod
+    def _from_row(cls, row: dict, repo: MeetingRepository) -> Meeting:
+        return cls(
+            meeting_id=row["id"],
+            name=row["name"],
+            description=row.get("description"),
+            period_start=row["period_start"],
+            period_end=row["period_end"],
+            search_start_time=row["search_start_time"],
+            search_end_time=row["search_end_time"],
+            travel_buffer_min=row["travel_buffer_min"],
+            min_duration_min=row["min_duration_min"],
+            needs_recalc=row["needs_recalc"],
+            invite_code=row.get("invite_code"),
+            invite_expires_at=row.get("invite_expires_at"),
+            share_token=row.get("share_token"),
+            deleted_at=row.get("deleted_at"),
+            repo=repo,
+        )
+
+    # ── 기능 (클래스 다이어그램 기준) ──────────────────────────────
+    @classmethod
+    def create(
+        cls,
+        *,
+        name: str,
+        period_start: date,
+        period_end: date,
+        search_start_time: time,
+        search_end_time: time,
+        min_duration_min: int,
+        description: str | None = None,
+        travel_buffer_min: int = 0,
+        repo: MeetingRepository,
+    ) -> Meeting:
+        """모임 생성 → create():MEETING."""
+        row = repo.insert(
+            {
+                "name": name,
+                "description": description,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "search_start_time": search_start_time.isoformat(),
+                "search_end_time": search_end_time.isoformat(),
+                "travel_buffer_min": travel_buffer_min,
+                "min_duration_min": min_duration_min,
+                "needs_recalc": False,
+            }
+        )
+        return cls._from_row(row, repo)
+
+    def update_conditions(
+        self,
+        *,
+        search_start_time: time | None = None,
+        search_end_time: time | None = None,
+        travel_buffer_min: int | None = None,
+        min_duration_min: int | None = None,
+    ) -> None:
+        """공강 탐색 조건 수정 → updateConditions():void.
+
+        조건이 바뀌면 재계산이 필요하므로 needs_recalc 를 켠다.
+        """
+        if search_start_time is not None:
+            self.search_start_time = search_start_time
+        if search_end_time is not None:
+            self.search_end_time = search_end_time
+        if travel_buffer_min is not None:
+            self.travel_buffer_min = travel_buffer_min
+        if min_duration_min is not None:
+            self.min_duration_min = min_duration_min
+        self.needs_recalc = True
+
+        self._repo.update(
+            self.meeting_id,
+            {
+                "search_start_time": self.search_start_time.isoformat(),
+                "search_end_time": self.search_end_time.isoformat(),
+                "travel_buffer_min": self.travel_buffer_min,
+                "min_duration_min": self.min_duration_min,
+                "needs_recalc": True,
+            },
+        )
+
+    def create_invite(self) -> str:
+        """초대 코드 발급 → createInvite():String. 7일 유효."""
+        self.invite_code = secrets.token_urlsafe(8)
+        self.invite_expires_at = datetime.now() + self.INVITE_TTL
+        self._repo.update(
+            self.meeting_id,
+            {
+                "invite_code": self.invite_code,
+                "invite_expires_at": self.invite_expires_at.isoformat(),
+            },
+        )
+        return self.invite_code
+
+    def on_member_joined(self):
+        """팀원 합류 시 공강 재계산 트리거 → onMemberJoined():MATCHING_RUN.
+
+        참여자가 늘면 공통 공강이 달라지므로 새 MatchingRun 을 실행한다.
+        """
+        self.needs_recalc = True
+        self._repo.update(self.meeting_id, {"needs_recalc": True})
+        # TODO: MatchingRun.calculate(trigger_type="JOIN") 호출로 연결
+        raise NotImplementedError("매칭 계산 연동은 MatchingRun 구현 후 연결 예정입니다.")
+
+    def recalculate(self):
+        """관리자 수동 재계산 → recalculate():MATCHING_RUN."""
+        self.needs_recalc = False
+        self._repo.update(self.meeting_id, {"needs_recalc": False})
+        # TODO: MatchingRun.calculate(trigger_type="ADMIN_RECALC") 호출로 연결
+        raise NotImplementedError("매칭 계산 연동은 MatchingRun 구현 후 연결 예정입니다.")
+
+    def confirm(self):
+        """최종 일정 확정 → confirm():CONFIRMED_SCHEDULE.
+
+        확정 직전 재검사(PRE_CONFIRM_RECHECK) 후 ConfirmedSchedule 을 생성한다.
+        """
+        # TODO: 재검사 통과 시 ConfirmedSchedule.confirm() 으로 연결
+        raise NotImplementedError("일정 확정 연동은 ConfirmedSchedule 구현 후 연결 예정입니다.")
+
+    def delete(self) -> None:
+        """모임 삭제(Soft Delete) → delete():void."""
+        self.deleted_at = datetime.now()
+        self._repo.update(self.meeting_id, {"deleted_at": self.deleted_at.isoformat()})
