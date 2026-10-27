@@ -1,0 +1,41 @@
+from datetime import date, time
+
+from pydantic import BaseModel, Field
+
+
+class MeetingCreateRequest(BaseModel):
+    """모임 생성 요청. 기본 정보 + 공강 탐색 조건을 담는다."""
+
+    name: str = Field(..., description="모임 이름", examples=["캡스톤 2조 정기회의"])
+    description: str | None = Field(
+        None, description="모임 설명", examples=["주간 진행상황 공유"]
+    )
+    period_start: date = Field(..., description="조회 기간 시작", examples=["2026-11-01"])
+    period_end: date = Field(..., description="조회 기간 종료", examples=["2026-11-30"])
+    search_start_time: time = Field(
+        ..., description="하루 탐색 범위 시작", examples=["09:00"]
+    )
+    search_end_time: time = Field(
+        ..., description="하루 탐색 범위 종료", examples=["18:00"]
+    )
+    min_duration_min: int = Field(
+        ..., gt=0, description="최소 회의 시간(분)", examples=[60]
+    )
+    travel_buffer_min: int = Field(
+        0, ge=0, description="이동 여유 시간(분)", examples=[10]
+    )
+
+
+class MeetingOut(BaseModel):
+    """생성/조회된 모임 정보."""
+
+    meeting_id: int = Field(..., description="모임 고유 번호", examples=[1])
+    name: str
+    description: str | None = None
+    period_start: date
+    period_end: date
+    search_start_time: time
+    search_end_time: time
+    travel_buffer_min: int
+    min_duration_min: int
+    needs_recalc: bool = Field(..., description="재계산 필요 상태", examples=[False])
