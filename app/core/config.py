@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""  # service_role 또는 anon 키
 
+    # JWT 인증
+    JWT_SECRET: str = "change-me-in-production"  # 운영에서는 반드시 .env 로 덮어쓸 것
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24시간
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
