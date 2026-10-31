@@ -7,8 +7,28 @@ from app.services.timetable_service import recognize_timetable
 from app.services.timetable_service import save_timetable
 from app.schemas.timetable import TimetableSaveRequest, TimetableSaveOut
 from app.repositories.timetable_repository import TimetableRepository
+from app.schemas.timetable import TimetableReadOut
+from app.services.timetable_service import read_timetable
 
 router = APIRouter(prefix="/timetable", tags=["timetable"])
+
+
+@router.get(
+    "", response_model=TimetableReadOut, summary="내 시간표 조회",
+    responses={401: {"description": "인증 필요"},
+               404: {"description": "등록된 시간표 없음"},
+               503: {"description": "DB 조회 실패"}},
+)
+def read(
+    current_user: User = Depends(get_current_user),
+    repository: TimetableRepository = Depends(get_timetable_repository),
+) -> TimetableReadOut:
+    """저장된 수업·수기·최종 비트와 버전, 시간 정보를 반환한다.
+
+    사용자 ID는 로그인 정보에서만 가져온다. 미등록 시 404를 반환하며,
+    조회 과정에서 주말 초기화나 시간표 변경은 하지 않는다.
+    """
+    return read_timetable(current_user.user_id, repository)
 
 
 @router.put(

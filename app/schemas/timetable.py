@@ -18,6 +18,15 @@ class TimetableSaveOut(TimetableSaveRequest):
     updated_at: datetime
 
 
+class TimetableReadOut(TimetableSaveOut):
+    days: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    start_time: Literal["09:00"] = "09:00"
+    end_time: Literal["22:00"] = "22:00"
+    slot_minutes: Literal[30] = 30
+    slots_per_day: Literal[26] = 26
+    bit_order: Literal["day_major"] = "day_major"
+
+
 class TimetableRecognitionOut(BaseModel):
     """요일별 26비트를 월~일 순서로 연결. 1=가능, 0=불가."""
 
