@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "mjufinder-be"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
     # CORS: 프론트엔드 주소 (쉼표로 구분)
     CORS_ORIGINS: str = "http://localhost:3000"

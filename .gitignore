@@ -17,6 +17,7 @@ ENV/
 
 # Environment files
 .env
+secrets.json
 .env.*
 !.env.example
 
