@@ -7,14 +7,35 @@ from fastapi import HTTPException, UploadFile
 from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
 from google.auth.exceptions import GoogleAuthError
 from PIL import Image, UnidentifiedImageError
+from postgrest.exceptions import APIError
+from httpx import HTTPError
 
 from app.domain.timetable import Timetable
 from app.schemas.timetable import TimetableRecognitionOut
+from app.schemas.timetable import TimetableSaveRequest, TimetableSaveOut
+from app.repositories.timetable_repository import TimetableRepository
 from app.services.timetable_parser import WeekdayHeaderError, get_exact_timetable_matrix
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 12_000_000
+
+
+def save_timetable(
+    user_id: int, payload: TimetableSaveRequest, repository: TimetableRepository,
+) -> TimetableSaveOut:
+    timetable = Timetable(class_bits=payload.class_bits, manual_bits=payload.manual_bits)
+    try:
+        row = repository.save(user_id, timetable)
+    except APIError as exc:
+        if exc.code == "PT401":
+            raise HTTPException(401, "유효하지 않은 사용자입니다.") from None
+        logger.exception("Timetable database save failed")
+        raise HTTPException(503, "시간표 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+    except HTTPError:
+        logger.exception("Timetable database connection failed")
+        raise HTTPException(503, "시간표 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+    return TimetableSaveOut(**row)
 
 
 def recognize_timetable(file: UploadFile) -> TimetableRecognitionOut:

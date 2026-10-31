@@ -13,6 +13,11 @@ from app.core.supabase import get_supabase
 from app.domain.user import User
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.timetable_repository import TimetableRepository
+
+
+def get_timetable_repository(db: Client = Depends(get_supabase)) -> TimetableRepository:
+    return TimetableRepository(db)
 
 
 def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:

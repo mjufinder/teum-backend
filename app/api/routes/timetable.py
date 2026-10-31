@@ -1,11 +1,33 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_timetable_repository
 from app.domain.user import User
 from app.schemas.timetable import TimetableRecognitionOut
 from app.services.timetable_service import recognize_timetable
+from app.services.timetable_service import save_timetable
+from app.schemas.timetable import TimetableSaveRequest, TimetableSaveOut
+from app.repositories.timetable_repository import TimetableRepository
 
 router = APIRouter(prefix="/timetable", tags=["timetable"])
+
+
+@router.put(
+    "", response_model=TimetableSaveOut, summary="내 시간표 등록 및 수정",
+    responses={401: {"description": "인증 필요"},
+               422: {"description": "182자리 0/1 문자열 필요"},
+               503: {"description": "DB 저장 실패"}},
+)
+def save(
+    payload: TimetableSaveRequest,
+    current_user: User = Depends(get_current_user),
+    repository: TimetableRepository = Depends(get_timetable_repository),
+) -> TimetableSaveOut:
+    """두 비트 문자열 전체를 저장한다. 최초 등록/수정 모두 200을 반환한다.
+
+    수정하지 않은 인식 결과도 class_bits와 manual_bits만 보내 저장할 수 있다.
+    주말을 포함한 입력을 그대로 보존하며 동일 내용 재저장은 버전을 변경하지 않는다.
+    """
+    return save_timetable(current_user.user_id, payload, repository)
 
 
 @router.post(
