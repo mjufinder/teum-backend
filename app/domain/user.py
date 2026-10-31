@@ -152,3 +152,12 @@ class User:
         도메인 상태 변경은 없다.
         """
         return None
+
+    def withdraw(self) -> None:
+        """회원 탈퇴(Soft Delete) → withdraw():void (AUTH-03).
+
+        deleted_at 을 기록해 논리 삭제한다. 개인정보/시간표 물리 삭제는
+        배치 또는 DB cascade 로 후처리한다.
+        """
+        self.deleted_at = datetime.now()
+        self._repo.update(self.user_id, {"deleted_at": self.deleted_at.isoformat()})

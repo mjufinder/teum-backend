@@ -38,3 +38,14 @@ class LoginResponse(BaseModel):
         ..., description="신규 가입 여부 (true면 온보딩 단계로 이동)", examples=[True]
     )
     user: UserOut
+
+
+class ProfileUpdateRequest(BaseModel):
+    """온보딩/마이페이지 프로필 수정 요청. (AUTH-02)"""
+
+    name: str | None = Field(
+        None, description="사용자 이름", examples=["한규진"]
+    )
+    major: str | None = Field(
+        None, description="전공", examples=["컴퓨터공학전공"]
+    )
