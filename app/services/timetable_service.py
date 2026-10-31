@@ -13,12 +13,24 @@ from httpx import HTTPError
 from app.domain.timetable import Timetable
 from app.schemas.timetable import TimetableRecognitionOut
 from app.schemas.timetable import TimetableSaveRequest, TimetableSaveOut
+from app.schemas.timetable import TimetableReadOut
 from app.repositories.timetable_repository import TimetableRepository
 from app.services.timetable_parser import WeekdayHeaderError, get_exact_timetable_matrix
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 12_000_000
+
+
+def read_timetable(user_id: int, repository: TimetableRepository) -> TimetableReadOut:
+    try:
+        row = repository.find_by_user(user_id)
+    except (APIError, HTTPError):
+        logger.exception("Timetable database read failed")
+        raise HTTPException(503, "시간표 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+    if row is None:
+        raise HTTPException(404, "등록된 시간표가 없습니다.")
+    return TimetableReadOut(**row)
 
 
 def save_timetable(
