@@ -15,14 +15,16 @@ class User:
     > snake_case(`social_login`)로 옮긴 것이다. (1:1 대응)
     """
 
-    # ── 속성 (클래스 다이어그램 기준) ──────────────────────────────
+    # ── 속성 (클래스 다이어그램 기준 + Supabase Auth 연동 컬럼) ──────
     def __init__(
         self,
         *,
         user_id: int | None,
-        provider: str,
-        provider_user_id: str,
+        auth_uid: str,
+        email: str | None,
         name: str,
+        provider: str | None = None,
+        provider_user_id: str | None = None,
         major: str | None = None,
         profile_completed: bool = False,
         timetable_registered_at: datetime | None = None,
@@ -30,10 +32,12 @@ class User:
         deleted_at: datetime | None = None,
         repo: UserRepository,
     ):
-        self.user_id = user_id                               # Long
-        self.provider = provider                             # String (google/kakao/naver)
-        self.provider_user_id = provider_user_id             # String
+        self.user_id = user_id                               # Long (내부 PK)
+        self.auth_uid = auth_uid                             # UUID (Supabase auth.users.id)
+        self.email = email                                   # String (인증 이메일)
         self.name = name                                     # String
+        self.provider = provider                             # String (google 등, 선택)
+        self.provider_user_id = provider_user_id             # String (선택)
         self.major = major                                   # String (온보딩 전이면 None)
         self.profile_completed = profile_completed           # Boolean
         self.timetable_registered_at = timetable_registered_at  # LocalDateTime
@@ -46,9 +50,11 @@ class User:
     def _from_row(cls, row: dict, repo: UserRepository) -> User:
         return cls(
             user_id=row["id"],
-            provider=row["provider"],
-            provider_user_id=row["provider_user_id"],
+            auth_uid=row["auth_uid"],
+            email=row.get("email"),
             name=row["name"],
+            provider=row.get("provider"),
+            provider_user_id=row.get("provider_user_id"),
             major=row.get("major"),
             profile_completed=row["profile_completed"],
             timetable_registered_at=row.get("timetable_registered_at"),
@@ -59,27 +65,30 @@ class User:
 
     # ── 기능 (클래스 다이어그램 기준) ──────────────────────────────
     @classmethod
-    def social_login(
+    def from_auth_user(
         cls,
         *,
-        provider: str,
-        provider_user_id: str,
+        auth_uid: str,
+        email: str | None,
         name: str,
+        provider: str | None = None,
         repo: UserRepository,
     ) -> User:
-        """소셜 로그인/회원가입 (AUTH-01) → socialLogin():USER.
+        """Supabase 인증 유저 → 앱 사용자 프로비저닝 (AUTH-01) → socialLogin():USER.
 
-        기존 계정이면 조회해서 반환하고, 없으면 신규 생성한다.
+        로그인/회원가입(이메일·구글)은 Supabase Auth 가 처리하고, 백엔드는
+        인증된 유저의 `auth_uid` 로 우리 users 행을 find-or-create 한다.
         """
-        row = repo.find_by_provider(provider, provider_user_id)
+        row = repo.find_by_auth_uid(auth_uid)
         if row is not None:
             return cls._from_row(row, repo)
 
         row = repo.insert(
             {
-                "provider": provider,
-                "provider_user_id": provider_user_id,
+                "auth_uid": auth_uid,
+                "email": email,
                 "name": name,
+                "provider": provider,
                 "profile_completed": False,
             }
         )

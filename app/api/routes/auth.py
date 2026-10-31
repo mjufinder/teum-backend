@@ -1,32 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_current_user, get_user_repository
-from app.core.security import create_access_token
+from app.api.deps import get_current_user
 from app.domain.user import User
-from app.repositories.user_repository import UserRepository
-from app.schemas.auth import (
-    LoginRequest,
-    LoginResponse,
-    ProfileUpdateRequest,
-    UserOut,
-)
+from app.schemas.auth import ProfileUpdateRequest, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
-def _exchange_oauth_code(provider: str, code: str) -> tuple[str, str]:
-    """OAuth 인가 코드 → (provider_user_id, name).
-
-    > ⚠️ 실제 provider 별 토큰 교환/프로필 조회는 아직 미구현(개발용 스텁).
-    > provider 자격증명(client id/secret) 확보 후 httpx 로 토큰 교환 예정.
-    > 지금은 code 를 그대로 식별자로 사용해 로그인 흐름만 연결한다.
-    """
-    if not code:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 code"
-        )
-    # TODO: provider 별 OAuth 2.0 토큰 교환 → 사용자 프로필 조회
-    return f"{provider}:{code}", "사용자"
+# 로그인/회원가입(이메일·구글)은 프론트 ↔ Supabase Auth 가 직접 처리한다.
+# 백엔드는 Supabase 토큰 검증(get_current_user) + 사용자 프로비저닝/온보딩/탈퇴만 담당.
 
 
 def _to_user_out(user: User) -> UserOut:
@@ -38,52 +19,18 @@ def _to_user_out(user: User) -> UserOut:
     )
 
 
-@router.post(
-    "/login",
-    response_model=LoginResponse,
-    summary="소셜 로그인",
-    responses={
-        400: {"description": "잘못된 요청 (지원하지 않는 provider 등)"},
-        401: {"description": "인증 실패 (유효하지 않은 code)"},
-    },
-)
-def login(
-    payload: LoginRequest,
-    user_repo: UserRepository = Depends(get_user_repository),
-) -> LoginResponse:
-    """OAuth 2.0 기반 소셜 로그인 / 회원가입 (AUTH-01).
-
-    - 기존 계정이면 `is_new=false` → 메인으로 이동
-    - 신규/온보딩 미완료 계정이면 `is_new=true` → 온보딩 단계로 이동
-
-    컨트롤러 → `User.social_login()`(domain) → `UserRepository`(DB) 흐름으로 처리하고,
-    로그인 성공 시 자체 JWT 액세스 토큰을 발급한다.
-    """
-    provider_user_id, name = _exchange_oauth_code(payload.provider, payload.code)
-
-    user = User.social_login(
-        provider=payload.provider,
-        provider_user_id=provider_user_id,
-        name=name,
-        repo=user_repo,
-    )
-
-    return LoginResponse(
-        access_token=create_access_token(user.user_id),
-        token_type="bearer",
-        is_new=user.is_new(),
-        user=_to_user_out(user),
-    )
-
-
 @router.get(
     "/me",
     response_model=UserOut,
-    summary="내 정보 조회",
+    summary="내 정보 조회 / 최초 프로비저닝",
     responses={401: {"description": "인증 필요"}},
 )
 def read_me(current_user: User = Depends(get_current_user)) -> UserOut:
-    """현재 로그인한 사용자 정보 조회 (토큰 필요)."""
+    """현재 로그인한 사용자 정보 조회 (Supabase 토큰 필요).
+
+    최초 호출 시 Supabase 인증 유저를 우리 users 테이블로 프로비저닝한다.
+    (`is_new` 판정은 `profile_completed` 로 프론트에서 온보딩 분기)
+    """
     return _to_user_out(current_user)
 
 

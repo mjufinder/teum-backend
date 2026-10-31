@@ -13,14 +13,12 @@ class UserRepository:
     def __init__(self, db: Client):
         self.db = db
 
-    def find_by_provider(self, provider: str, provider_user_id: str) -> dict | None:
-        """소셜 계정 (provider, provider_user_id) 로 사용자 조회. 없으면 None."""
+    def find_by_auth_uid(self, auth_uid: str) -> dict | None:
+        """Supabase 인증 유저 ID(auth_uid)로 사용자 조회. 없으면 None."""
         res = (
             self.db.table(self.TABLE)
             .select("*")
-            .eq("provider", provider)
-            .eq("provider_user_id", provider_user_id)
-            .is_("deleted_at", "null")
+            .eq("auth_uid", auth_uid)
             .execute()
         )
         return res.data[0] if res.data else None
