@@ -1,6 +1,21 @@
 from typing import Literal
+from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TimetableSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    class_bits: str = Field(strict=True, min_length=182, max_length=182, pattern=r"^[01]+$")
+    manual_bits: str = Field(strict=True, min_length=182, max_length=182, pattern=r"^[01]+$")
+
+
+class TimetableSaveOut(TimetableSaveRequest):
+    available_bits: str = Field(min_length=182, max_length=182, pattern=r"^[01]+$")
+    timetable_version: int
+    timetable_registered_at: datetime
+    updated_at: datetime
 
 
 class TimetableRecognitionOut(BaseModel):
