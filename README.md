@@ -13,10 +13,15 @@ teum (mjufinder) 프로젝트의 백엔드 API 서버입니다.
 ## 요구사항
 
 - Python 3.11+
+- **Docker Desktop** (로컬 Supabase 실행용)
+- **Supabase CLI** — `brew install supabase/tap/supabase`
 
 ## 시작하기
 
 ```bash
+# 0. 로컬 Supabase 기동 (Docker 필요) — DB 스키마(migrations)가 자동 적용됩니다
+supabase start
+
 # 1. 가상환경 생성 & 활성화
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -24,13 +29,16 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 # 2. 의존성 설치
 pip install -r requirements.txt
 
-# 3. 환경변수 설정
+# 3. 환경변수 설정 (.env.example 의 로컬 표준값을 그대로 쓰면 됩니다)
 cp .env.example .env
-# .env 에 Supabase 값을 채워주세요.
 
 # 4. 개발 서버 실행
 uvicorn app.main:app --reload
 ```
+
+> 로컬 Supabase 접속 정보는 `supabase status` 로 확인할 수 있고,
+> `.env.example` 에 들어있는 값(로컬 전용 데모 키)과 동일합니다.
+> Supabase Studio(테이블 확인): http://127.0.0.1:54323 · 끄기: `supabase stop`
 
 - API 서버: [http://localhost:8000](http://localhost:8000)
 - Swagger 문서: [http://localhost:8000/docs](http://localhost:8000/docs)
