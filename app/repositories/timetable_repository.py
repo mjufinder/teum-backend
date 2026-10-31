@@ -15,3 +15,20 @@ class TimetableRepository:
             "p_manual_bits": timetable.manual_bits,
         }).execute()
         return result.data[0]
+
+    def find_by_user(self, user_id: int) -> dict | None:
+        """단일 조회로 시간표와 같은 시점의 사용자 등록 정보를 가져온다."""
+        result = (
+            self.db.table("timetables")
+            .select("class_bits,manual_bits,available_bits,updated_at,"
+                    "users!inner(timetable_version,timetable_registered_at)")
+            .eq("user_id", user_id)
+            .is_("users.deleted_at", "null")
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        row = dict(result.data[0])
+        user = row.pop("users")
+        return {**row, **user}
