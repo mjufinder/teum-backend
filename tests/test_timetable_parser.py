@@ -81,5 +81,40 @@ def test_weekdays_in_class_area_do_not_replace_missing_header():
         timetable._validate_weekday_headers(boxes, np.array([0, 40, 140, 240, 340, 440, 540]), 20)
 
 
+def test_valid_headers_do_not_retry():
+    boxes = [(label, 60 + day * 100, 2, 90 + day * 100, 18)
+             for day, label in enumerate("월화수목금")]
+    with patch.object(timetable, "_get_text_boxes") as ocr:
+        timetable._validate_headers_with_retry(
+            "unused.png", boxes, np.array([0, 40, 140, 240, 340, 440, 540]), 20
+        )
+    ocr.assert_not_called()
+
+
+@pytest.mark.parametrize("labels,valid", [("월화수목금", True), ("월화목금", False),
+                                         ("화월수목금", False)])
+def test_header_retry_scaled_coordinates(tmp_path, labels, valid):
+    from io import BytesIO
+
+    path = tmp_path / "image.png"
+    Image.new("RGB", (541, 300), "white").save(path)
+    boxes = [(label, (60 + day * 100) * 4, 8, (90 + day * 100) * 4, 72)
+             for day, label in enumerate(labels)]
+
+    def retry(content):
+        with Image.open(BytesIO(content)) as header:
+            assert header.size == (2164, 80)
+        return boxes
+
+    with patch.object(timetable, "_get_text_boxes", side_effect=retry) as ocr:
+        args = (path, [], np.array([0, 40, 140, 240, 340, 440, 540]), 20)
+        if valid:
+            timetable._validate_headers_with_retry(*args)
+        else:
+            with pytest.raises(timetable.WeekdayHeaderError):
+                timetable._validate_headers_with_retry(*args)
+        assert ocr.call_count == 1
+
+
 if __name__ == "__main__":
     unittest.main()

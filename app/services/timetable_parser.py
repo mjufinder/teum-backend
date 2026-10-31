@@ -1,6 +1,7 @@
 ﻿from pathlib import Path
 
 import re
+from io import BytesIO
 
 import numpy as np
 from PIL import Image
@@ -33,6 +34,31 @@ def _validate_weekday_headers(text_boxes, vertical, header_bottom):
             )
 
 
+def _validate_headers_with_retry(image_path, text_boxes, vertical, header_bottom):
+    """요일 검증 실패 시 상단만 확대해 한 번 재인식한다."""
+    try:
+        _validate_weekday_headers(text_boxes, vertical, header_bottom)
+        return
+    except WeekdayHeaderError:
+        pass
+
+    with Image.open(image_path) as image:
+        header = image.convert("RGB").crop((0, 0, image.width, int(header_bottom)))
+        scale = min(4.0, (12_000_000 / (header.width * header.height)) ** 0.5)
+        width = max(1, round(header.width * scale))
+        height = max(1, round(header.height * scale))
+        enlarged = header.resize((width, height), Image.Resampling.LANCZOS)
+        buffer = BytesIO()
+        enlarged.save(buffer, format="PNG")
+        retry_boxes = _get_text_boxes(buffer.getvalue())
+        sx, sy = width / header.width, height / header.height
+        original_boxes = [
+            (text, x0 / sx, y0 / sy, x1 / sx, y1 / sy)
+            for text, x0, y0, x1, y1 in retry_boxes
+        ]
+    _validate_weekday_headers(original_boxes, vertical, header_bottom)
+
+
 def _get_text_boxes(image_path):
     """Google OCR이 인식한 단어와 좌표를 반환한다."""
     from app.core.config import settings
@@ -49,7 +75,9 @@ def _get_text_boxes(image_path):
             raise DefaultCredentialsError("Invalid OCR credential file") from exc
     client = vision.ImageAnnotatorClient(credentials=credentials)
     response = client.document_text_detection(
-        image=vision.Image(content=Path(image_path).read_bytes()), timeout=60, retry=None
+        image=vision.Image(content=(image_path if isinstance(image_path, bytes)
+                                   else Path(image_path).read_bytes())),
+        timeout=60, retry=None
     )
     if response.error.message:
         raise RuntimeError(f"Google OCR 오류: {response.error.message}")
@@ -164,7 +192,7 @@ def get_exact_timetable_matrix(image_path, *, return_time_slots=False):
     vertical, hours = _find_grid(pixels)
 
     text_boxes = _get_text_boxes(image_path)
-    _validate_weekday_headers(text_boxes, vertical, hours[0])
+    _validate_headers_with_retry(image_path, text_boxes, vertical, hours[0])
     start_hour = _read_start_hour(text_boxes, vertical, hours)
     matrix = np.ones(((END_HOUR - START_HOUR) * 60 // SLOT_MINUTES, 5), dtype=int)
     dark_theme = np.median(pixels[:, :vertical[1]]) < 128

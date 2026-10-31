@@ -3,12 +3,12 @@ import warnings
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import numpy as np
 from fastapi import HTTPException, UploadFile
 from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
 from google.auth.exceptions import GoogleAuthError
 from PIL import Image, UnidentifiedImageError
 
+from app.domain.timetable import Timetable
 from app.schemas.timetable import TimetableRecognitionOut
 from app.services.timetable_parser import WeekdayHeaderError, get_exact_timetable_matrix
 
@@ -63,13 +63,14 @@ def recognize_timetable(file: UploadFile) -> TimetableRecognitionOut:
                     422, "시간표를 인식할 수 없습니다. 월~금 격자와 시간축이 보이는 에브리타임 이미지를 사용해 주세요."
                 ) from None
 
-            if matrix.shape != (26, 5) or not np.isin(matrix, [0, 1]).all():
-                raise HTTPException(500, "시간표 인식 결과 형식이 올바르지 않습니다.")
-            # OCR은 시간행×요일열. API에서는 월요일 26칸부터 요일별로 직렬화.
-            bits = "".join(str(int(value)) for value in matrix.T.flat) + "1" * 52
+            try:
+                timetable = Timetable.from_weekday_matrix(matrix.tolist())
+            except (ValueError, TypeError, AttributeError):
+                raise HTTPException(500, "시간표 인식 결과 형식이 올바르지 않습니다.") from None
             return TimetableRecognitionOut(
-                class_bits=bits,
-                available_bits=bits,
+                class_bits=timetable.class_bits,
+                manual_bits=timetable.manual_bits,
+                available_bits=timetable.available_bits,
                 warnings=[
                     "토요일과 일요일은 모두 가능으로 설정했습니다. 주말 불가 시간을 확인해 주세요.",
                     "이미지에 표시되지 않은 시간은 가능으로 설정했습니다. 저장 전에 전체 시간표를 확인해 주세요.",
