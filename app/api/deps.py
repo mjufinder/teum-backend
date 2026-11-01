@@ -10,7 +10,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client
 
 from app.core.supabase import get_supabase
+from app.domain.meeting_member import MeetingMember
 from app.domain.user import User
+from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.timetable_repository import TimetableRepository
@@ -26,6 +28,12 @@ def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:
 
 def get_meeting_repository(db: Client = Depends(get_supabase)) -> MeetingRepository:
     return MeetingRepository(db)
+
+
+def get_meeting_member_repository(
+    db: Client = Depends(get_supabase),
+) -> MeetingMemberRepository:
+    return MeetingMemberRepository(db)
 
 
 # Authorization: Bearer <token> 헤더에서 토큰을 추출 (Swagger 에 자물쇠 UI 노출)
@@ -75,3 +83,38 @@ def get_current_user(
     if user.deleted_at is not None:
         raise unauthorized
     return user
+
+
+def get_meeting_member(
+    meeting_id: int,
+    current_user: User = Depends(get_current_user),
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+    member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+) -> MeetingMember:
+    """현재 사용자가 해당 모임의 활성 구성원인지 검증 후 멤버십을 주입한다.
+
+    모임 하위 모든 엔드포인트의 공통 권한 토대. 모임이 없으면 404,
+    구성원이 아니면 403 을 반환한다.
+    """
+    meeting = meeting_repo.find_by_id(meeting_id)
+    if meeting is None or meeting.get("deleted_at") is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="모임을 찾을 수 없습니다."
+        )
+    row = member_repo.find_by_meeting_and_user(meeting_id, current_user.user_id)
+    if row is None or row["status"] != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="이 모임의 구성원이 아닙니다."
+        )
+    return MeetingMember._from_row(row, member_repo)
+
+
+def require_meeting_admin(
+    member: MeetingMember = Depends(get_meeting_member),
+) -> MeetingMember:
+    """모임 관리자만 통과시킨다. 관리자가 아니면 403."""
+    if not member.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="모임 관리자만 가능합니다."
+        )
+    return member
