@@ -48,3 +48,11 @@ class MemberOut(BaseModel):
     user_id: int = Field(..., description="사용자 번호", examples=[1])
     role: str = Field(..., description="ADMIN / MEMBER", examples=["ADMIN"])
     status: str = Field(..., description="ACTIVE / LEFT", examples=["ACTIVE"])
+
+
+class AddMemberRequest(BaseModel):
+    """팀원 추가 요청. 추가할 사용자의 이메일로 검색해 즉시 등록한다. (MEET-03)"""
+
+    email: str = Field(
+        ..., description="추가할 팀원의 이메일", examples=["teammate@example.com"]
+    )
