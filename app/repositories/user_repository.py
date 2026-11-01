@@ -27,6 +27,17 @@ class UserRepository:
         res = self.db.table(self.TABLE).select("*").eq("id", user_id).execute()
         return res.data[0] if res.data else None
 
+    def find_by_email(self, email: str) -> dict | None:
+        """이메일로 사용자 조회 (탈퇴하지 않은 사용자). 없으면 None. (팀원 추가용)"""
+        res = (
+            self.db.table(self.TABLE)
+            .select("*")
+            .eq("email", email)
+            .is_("deleted_at", "null")
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
     def insert(self, data: dict) -> dict:
         """신규 사용자 저장 후 생성된 행(자동 id 포함)을 반환."""
         return self.db.table(self.TABLE).insert(data).execute().data[0]
