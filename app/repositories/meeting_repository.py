@@ -23,6 +23,19 @@ class MeetingRepository:
         )
         return res.data[0] if res.data else None
 
+    def find_by_ids(self, meeting_ids: list[int]) -> list[dict]:
+        """여러 모임 ID로 조회 (삭제되지 않은 것만). (내 모임 목록용)"""
+        if not meeting_ids:
+            return []
+        return (
+            self.db.table(self.TABLE)
+            .select("*")
+            .in_("id", meeting_ids)
+            .is_("deleted_at", "null")
+            .execute()
+            .data
+        )
+
     def insert(self, data: dict) -> dict:
         return self.db.table(self.TABLE).insert(data).execute().data[0]
 

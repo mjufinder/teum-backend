@@ -41,6 +41,29 @@ class MeetingMember:
 
     # ── 기능 (클래스 다이어그램 기준) ──────────────────────────────
     @classmethod
+    def register(
+        cls,
+        *,
+        meeting_id: int,
+        user_id: int,
+        role: str = "MEMBER",
+        repo: MeetingMemberRepository,
+    ) -> MeetingMember:
+        """모임에 구성원으로 등록한다 (ACTIVE 상태).
+
+        role="ADMIN" 이면 관리자(모임 생성자), 기본은 일반 구성원.
+        """
+        row = repo.insert(
+            {
+                "meeting_id": meeting_id,
+                "user_id": user_id,
+                "role": role,
+                "status": "ACTIVE",
+            }
+        )
+        return cls._from_row(row, repo)
+
+    @classmethod
     def accept_invite(
         cls,
         *,

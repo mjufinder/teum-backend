@@ -39,3 +39,12 @@ class MeetingOut(BaseModel):
     travel_buffer_min: int
     min_duration_min: int
     needs_recalc: bool = Field(..., description="재계산 필요 상태", examples=[False])
+
+
+class MemberOut(BaseModel):
+    """모임 구성원 정보."""
+
+    member_id: int = Field(..., description="구성원 고유 번호", examples=[1])
+    user_id: int = Field(..., description="사용자 번호", examples=[1])
+    role: str = Field(..., description="ADMIN / MEMBER", examples=["ADMIN"])
+    status: str = Field(..., description="ACTIVE / LEFT", examples=["ACTIVE"])
