@@ -102,6 +102,21 @@ class Meeting:
         )
         return cls._from_row(row, repo)
 
+    def update_info(self, *, name: str | None = None, description: str | None = None) -> None:
+        """모임 이름/설명 수정 → updateInfo():void.
+
+        식별 정보 변경이라 재계산(needs_recalc)과는 무관하다.
+        """
+        changes: dict = {}
+        if name is not None:
+            self.name = name
+            changes["name"] = name
+        if description is not None:
+            self.description = description
+            changes["description"] = description
+        if changes:
+            self._repo.update(self.meeting_id, changes)
+
     def update_conditions(
         self,
         *,
@@ -112,28 +127,26 @@ class Meeting:
     ) -> None:
         """공강 탐색 조건 수정 → updateConditions():void.
 
-        조건이 바뀌면 재계산이 필요하므로 needs_recalc 를 켠다.
+        전달된 필드만 변경하고, 조건이 바뀌었으므로 needs_recalc 를 켠다.
+        (DB 에서 복원된 객체의 시각 필드는 문자열일 수 있어, 전달값만 직렬화한다)
         """
+        changes: dict = {}
         if search_start_time is not None:
             self.search_start_time = search_start_time
+            changes["search_start_time"] = search_start_time.isoformat()
         if search_end_time is not None:
             self.search_end_time = search_end_time
+            changes["search_end_time"] = search_end_time.isoformat()
         if travel_buffer_min is not None:
             self.travel_buffer_min = travel_buffer_min
+            changes["travel_buffer_min"] = travel_buffer_min
         if min_duration_min is not None:
             self.min_duration_min = min_duration_min
-        self.needs_recalc = True
+            changes["min_duration_min"] = min_duration_min
 
-        self._repo.update(
-            self.meeting_id,
-            {
-                "search_start_time": self.search_start_time.isoformat(),
-                "search_end_time": self.search_end_time.isoformat(),
-                "travel_buffer_min": self.travel_buffer_min,
-                "min_duration_min": self.min_duration_min,
-                "needs_recalc": True,
-            },
-        )
+        self.needs_recalc = True
+        changes["needs_recalc"] = True
+        self._repo.update(self.meeting_id, changes)
 
     def create_invite(self) -> str:
         """초대 코드 발급 → createInvite():String. 7일 유효."""

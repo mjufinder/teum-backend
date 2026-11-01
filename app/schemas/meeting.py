@@ -41,6 +41,21 @@ class MeetingOut(BaseModel):
     needs_recalc: bool = Field(..., description="재계산 필요 상태", examples=[False])
 
 
+class MeetingUpdateRequest(BaseModel):
+    """모임 정보·조건 수정 요청. 전달된 필드만 수정한다. (MEET-02)"""
+
+    name: str | None = Field(None, description="모임 이름", examples=["이름 변경"])
+    description: str | None = Field(None, description="모임 설명")
+    min_duration_min: int | None = Field(
+        None, gt=0, description="최소 회의 시간(분)", examples=[90]
+    )
+    search_start_time: time | None = Field(None, description="하루 탐색 범위 시작")
+    search_end_time: time | None = Field(None, description="하루 탐색 범위 종료")
+    travel_buffer_min: int | None = Field(
+        None, ge=0, description="이동 여유 시간(분)"
+    )
+
+
 class MemberOut(BaseModel):
     """모임 구성원 정보."""
 

@@ -25,5 +25,16 @@ class MatchingRunRepository:
         )
         return res.data[0] if res.data else None
 
+    def find_ids_by_meeting(self, meeting_id: int) -> list[int]:
+        """모임의 모든 계산 이력 ID 목록. (후보 묶음 폐기 등 연계용)"""
+        rows = (
+            self.db.table(self.TABLE)
+            .select("id")
+            .eq("meeting_id", meeting_id)
+            .execute()
+            .data
+        )
+        return [r["id"] for r in rows]
+
     def insert(self, data: dict) -> dict:
         return self.db.table(self.TABLE).insert(data).execute().data[0]
