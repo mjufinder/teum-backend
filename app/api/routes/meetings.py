@@ -27,6 +27,7 @@ from app.schemas.meeting import (
     MeetingOut,
     MeetingUpdateRequest,
     MemberOut,
+    TransferAdminRequest,
 )
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
@@ -238,3 +239,87 @@ def add_member(
         )
 
     return add_member_and_match(meeting_id, target["id"], recommendation_repo)
+
+
+@router.post(
+    "/{meeting_id}/transfer-admin",
+    response_model=list[MemberOut],
+    summary="관리자 권한 위임",
+    responses={
+        400: {"description": "잘못된 대상 (본인 등)"},
+        403: {"description": "관리자 아님"},
+        404: {"description": "대상 구성원 없음"},
+    },
+)
+def transfer_admin(
+    meeting_id: int,
+    payload: TransferAdminRequest,
+    admin: MeetingMember = Depends(require_meeting_admin),
+    member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+) -> list[MemberOut]:
+    """관리자 권한을 다른 활성 구성원에게 위임한다 (MEET-05, 관리자만).
+
+    위임 후 기존 관리자는 일반 구성원(MEMBER)이 된다. (관리자 1명 유지)
+    """
+    if payload.target_user_id == admin.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="본인에게는 위임할 수 없습니다."
+        )
+    target_row = member_repo.find_by_meeting_and_user(meeting_id, payload.target_user_id)
+    if target_row is None or target_row["status"] != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="대상 구성원을 찾을 수 없습니다."
+        )
+    target = MeetingMember._from_row(target_row, member_repo)
+    admin.transfer_admin(target)
+
+    rows = member_repo.find_active_by_meeting(meeting_id)
+    return [
+        MemberOut(member_id=r["id"], user_id=r["user_id"], role=r["role"], status=r["status"])
+        for r in rows
+    ]
+
+
+@router.delete(
+    "/{meeting_id}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="모임 탈퇴",
+    responses={
+        403: {"description": "구성원 아님"},
+        404: {"description": "모임 없음"},
+        409: {"description": "관리자는 위임/삭제 후 탈퇴 가능"},
+    },
+)
+def leave_meeting(
+    meeting_id: int,
+    member: MeetingMember = Depends(get_meeting_member),
+) -> None:
+    """모임에서 탈퇴한다 (MEET-05).
+
+    관리자는 권한 위임 또는 모임 삭제 전까지 탈퇴할 수 없다.
+    """
+    if member.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="관리자는 권한 위임 또는 모임 삭제 후 탈퇴할 수 있습니다.",
+        )
+    member.leave()
+
+
+@router.delete(
+    "/{meeting_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="모임 삭제",
+    responses={
+        403: {"description": "관리자 아님"},
+        404: {"description": "모임 없음"},
+    },
+)
+def delete_meeting(
+    meeting_id: int,
+    _admin: MeetingMember = Depends(require_meeting_admin),
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+) -> None:
+    """모임을 삭제한다 (MEET-05, 관리자만). Soft Delete 로 처리한다."""
+    meeting = Meeting._from_row(meeting_repo.find_by_id(meeting_id), meeting_repo)
+    meeting.delete()
