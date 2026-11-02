@@ -33,3 +33,9 @@ def test_add_member_requires_auth():
     """팀원 추가는 토큰 없이 접근 시 401."""
     res = client.post("/api/v1/meetings/1/members", json={"email": "x@example.com"})
     assert res.status_code == 401
+
+
+def test_update_meeting_requires_auth():
+    """모임 수정은 토큰 없이 접근 시 401."""
+    res = client.put("/api/v1/meetings/1", json={"name": "x"})
+    assert res.status_code == 401

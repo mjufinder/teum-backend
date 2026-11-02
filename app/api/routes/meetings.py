@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import (
+    get_candidate_set_repository,
     get_current_user,
+    get_matching_run_repository,
     get_meeting_member,
     get_meeting_member_repository,
     get_meeting_repository,
@@ -11,6 +13,8 @@ from app.api.deps import (
 from app.domain.meeting import Meeting
 from app.domain.meeting_member import MeetingMember
 from app.domain.user import User
+from app.repositories.candidate_set_repository import CandidateSetRepository
+from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
@@ -18,6 +22,7 @@ from app.schemas.meeting import (
     AddMemberRequest,
     MeetingCreateRequest,
     MeetingOut,
+    MeetingUpdateRequest,
     MemberOut,
 )
 
@@ -120,6 +125,57 @@ def get_meeting(
     """모임 상세 조회. 해당 모임의 구성원만 조회할 수 있다."""
     row = meeting_repo.find_by_id(meeting_id)
     return _row_to_meeting_out(row)
+
+
+@router.put(
+    "/{meeting_id}",
+    response_model=MeetingOut,
+    summary="모임 정보·조건 수정",
+    responses={
+        403: {"description": "관리자 아님"},
+        404: {"description": "모임 없음"},
+    },
+)
+def update_meeting(
+    meeting_id: int,
+    payload: MeetingUpdateRequest,
+    _admin: MeetingMember = Depends(require_meeting_admin),
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+    run_repo: MatchingRunRepository = Depends(get_matching_run_repository),
+    set_repo: CandidateSetRepository = Depends(get_candidate_set_repository),
+) -> MeetingOut:
+    """모임 이름/설명·공강 탐색 조건을 수정한다 (MEET-02, 관리자만).
+
+    - 이름/설명 변경은 재계산과 무관
+    - 조건(최소 회의시간·탐색 시간대·이동 여유) 변경 시 `needs_recalc` 를 켜고,
+      진행 중인 후보 묶음(투표)을 폐기한다.
+    """
+    meeting = Meeting._from_row(meeting_repo.find_by_id(meeting_id), meeting_repo)
+
+    if payload.name is not None or payload.description is not None:
+        meeting.update_info(name=payload.name, description=payload.description)
+
+    condition_changed = any(
+        v is not None
+        for v in (
+            payload.min_duration_min,
+            payload.search_start_time,
+            payload.search_end_time,
+            payload.travel_buffer_min,
+        )
+    )
+    if condition_changed:
+        meeting.update_conditions(
+            min_duration_min=payload.min_duration_min,
+            search_start_time=payload.search_start_time,
+            search_end_time=payload.search_end_time,
+            travel_buffer_min=payload.travel_buffer_min,
+        )
+        # 조건이 바뀌면 진행 중인 투표(후보 묶음)를 폐기
+        run_ids = run_repo.find_ids_by_meeting(meeting_id)
+        set_repo.discard_open_by_runs(run_ids)
+
+    return _row_to_meeting_out(meeting_repo.find_by_id(meeting_id))
 
 
 @router.get(
