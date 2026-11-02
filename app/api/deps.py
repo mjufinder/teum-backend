@@ -77,7 +77,6 @@ def get_current_user(
         auth_uid=auth_user.id,
         email=auth_user.email,
         name=display_name,
-        provider=(auth_user.app_metadata or {}).get("provider"),
         repo=user_repo,
     )
     if user.deleted_at is not None:
