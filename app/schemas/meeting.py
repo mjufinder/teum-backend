@@ -10,8 +10,8 @@ class MeetingCreateRequest(BaseModel):
     description: str | None = Field(
         None, description="모임 설명", examples=["주간 진행상황 공유"]
     )
-    period_start: date = Field(..., description="조회 기간 시작", examples=["2026-11-01"])
-    period_end: date = Field(..., description="조회 기간 종료", examples=["2026-11-30"])
+    period_start: date = Field(..., description="모임 기간 시작 (주간 공강 추천에는 사용하지 않음)", examples=["2026-11-01"])
+    period_end: date = Field(..., description="모임 기간 종료 (주간 공강 추천에는 사용하지 않음)", examples=["2026-11-30"])
     search_start_time: time = Field(
         ..., description="하루 탐색 범위 시작", examples=["09:00"]
     )
