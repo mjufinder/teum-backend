@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import time
 
 from app.repositories.candidate_repository import CandidateRepository
 
@@ -18,16 +18,18 @@ class Candidate:
         candidate_id: int | None,
         set_id: int,
         rank_no: int,
-        start_at: datetime,
-        end_at: datetime,
+        day_of_week: int,
+        start_time: time,
+        end_time: time,
         available_count: int,
         repo: CandidateRepository,
     ):
         self.candidate_id = candidate_id        # Long
         self.set_id = set_id                    # Long
         self.rank_no = rank_no                  # Integer (묶음 내 추천 순위)
-        self.start_at = start_at                # LocalDateTime
-        self.end_at = end_at                    # LocalDateTime
+        self.day_of_week = day_of_week          # 월=0 ~ 일=6
+        self.start_time = start_time
+        self.end_time = end_time
         self.available_count = available_count  # Integer (참석 가능 인원)
         self._repo = repo
 
@@ -37,8 +39,9 @@ class Candidate:
             candidate_id=row["id"],
             set_id=row["set_id"],
             rank_no=row["rank_no"],
-            start_at=row["start_at"],
-            end_at=row["end_at"],
+            day_of_week=row["day_of_week"],
+            start_time=row["start_time"],
+            end_time=row["end_time"],
             available_count=row["available_count"],
             repo=repo,
         )

@@ -18,6 +18,11 @@ from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.timetable_repository import TimetableRepository
+from app.repositories.recommendation_repository import RecommendationRepository
+
+
+def get_recommendation_repository(db: Client = Depends(get_supabase)) -> RecommendationRepository:
+    return RecommendationRepository(db)
 
 
 def get_timetable_repository(db: Client = Depends(get_supabase)) -> TimetableRepository:
