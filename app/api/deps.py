@@ -15,6 +15,7 @@ from app.domain.user import User
 from app.repositories.candidate_set_repository import CandidateSetRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.meeting_member_repository import MeetingMemberRepository
+from app.repositories.meeting_memo_repository import MeetingMemoRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.timetable_repository import TimetableRepository
@@ -53,6 +54,12 @@ def get_meeting_member_repository(
     db: Client = Depends(get_supabase),
 ) -> MeetingMemberRepository:
     return MeetingMemberRepository(db)
+
+
+def get_meeting_memo_repository(
+    db: Client = Depends(get_supabase),
+) -> MeetingMemoRepository:
+    return MeetingMemoRepository(db)
 
 
 # Authorization: Bearer <token> 헤더에서 토큰을 추출 (Swagger 에 자물쇠 UI 노출)
