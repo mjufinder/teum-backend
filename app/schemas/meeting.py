@@ -71,3 +71,11 @@ class AddMemberRequest(BaseModel):
     email: str = Field(
         ..., description="추가할 팀원의 이메일", examples=["teammate@example.com"]
     )
+
+
+class TransferAdminRequest(BaseModel):
+    """관리자 권한 위임 요청. 대상 구성원의 user_id 를 지정한다. (MEET-05)"""
+
+    target_user_id: int = Field(
+        ..., description="권한을 넘길 구성원의 사용자 번호", examples=[2]
+    )
