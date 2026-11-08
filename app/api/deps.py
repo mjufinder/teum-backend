@@ -14,6 +14,7 @@ from app.domain.meeting_member import MeetingMember
 from app.domain.user import User
 from app.repositories.candidate_repository import CandidateRepository
 from app.repositories.candidate_set_repository import CandidateSetRepository
+from app.repositories.confirmed_schedule_repository import ConfirmedScheduleRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.vote_ballot_repository import VoteBallotRepository
 from app.repositories.vote_selection_repository import VoteSelectionRepository
@@ -61,6 +62,12 @@ def get_vote_selection_repository(
     db: Client = Depends(get_supabase),
 ) -> VoteSelectionRepository:
     return VoteSelectionRepository(db)
+
+
+def get_confirmed_schedule_repository(
+    db: Client = Depends(get_supabase),
+) -> ConfirmedScheduleRepository:
+    return ConfirmedScheduleRepository(db)
 
 
 def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:
