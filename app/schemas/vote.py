@@ -74,3 +74,20 @@ class ConfirmResult(BaseModel):
     meeting_id: int = Field(..., examples=[1])
     candidate_id: int = Field(..., examples=[1])
     confirmed_id: int | None = Field(None, description="확정 일정 id (성공 시)", examples=[1])
+
+
+class ShareOut(BaseModel):
+    """외부 공유 링크 발급 결과. (VOTE-04)"""
+
+    share_token: str = Field(..., description="공유 토큰", examples=["Hs3kP0a9bQ"])
+    share_url: str = Field(..., description="공유 조회 경로", examples=["/api/v1/share/Hs3kP0a9bQ"])
+
+
+class PublicScheduleOut(BaseModel):
+    """비회원용 확정 일정 읽기전용 조회 결과. (VOTE-04)"""
+
+    meeting_name: str = Field(..., examples=["캡스톤 2조 정기회의"])
+    day_of_week: int = Field(..., description="월=0 ~ 일=6", examples=[0])
+    start_time: str = Field(..., examples=["10:00:00"])
+    end_time: str = Field(..., examples=["11:00:00"])
+    confirmed_at: str = Field(..., description="확정 시각")
