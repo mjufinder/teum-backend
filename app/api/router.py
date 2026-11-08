@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     auth,
     candidates,
+    confirm,
     health,
     meeting_memos,
     meetings,
@@ -18,5 +19,6 @@ api_router.include_router(auth.router)
 api_router.include_router(meetings.router)
 api_router.include_router(meeting_memos.router)
 api_router.include_router(votes.router)
+api_router.include_router(confirm.router)
 api_router.include_router(timetable.router)
 api_router.include_router(candidates.router)

@@ -53,3 +53,24 @@ class TallyOut(BaseModel):
     winner_candidate_id: int | None = Field(
         None, description="현재 1위 후보 (동률 시 참석 인원 > 추천 순위)", examples=[1]
     )
+
+
+class ConfirmRequest(BaseModel):
+    """일정 확정 요청. 확정할 후보를 지정한다. (VOTE-03)"""
+
+    candidate_id: int = Field(..., description="확정할 후보 id", examples=[1])
+
+
+class ConfirmResult(BaseModel):
+    """일정 확정 결과. (VOTE-03)
+
+    확정 직전 재검사(팀원 시간표 변경 여부)를 수행한다.
+    변경이 감지되면 확정하지 않고 재계산을 안내한다.
+    """
+
+    confirmed: bool = Field(..., description="확정 성공 여부", examples=[True])
+    recheck_passed: bool = Field(..., description="재검사 통과 여부", examples=[True])
+    detail: str = Field(..., description="결과 설명")
+    meeting_id: int = Field(..., examples=[1])
+    candidate_id: int = Field(..., examples=[1])
+    confirmed_id: int | None = Field(None, description="확정 일정 id (성공 시)", examples=[1])
