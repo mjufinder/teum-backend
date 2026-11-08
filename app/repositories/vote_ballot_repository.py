@@ -24,6 +24,10 @@ class VoteBallotRepository:
         )
         return res.data[0] if res.data else None
 
+    def find_by_set(self, set_id: int) -> list[dict]:
+        """한 후보 묶음에 제출된 모든 투표지. (집계용)"""
+        return self.db.table(self.TABLE).select("*").eq("set_id", set_id).execute().data
+
     def insert(self, data: dict) -> dict:
         return self.db.table(self.TABLE).insert(data).execute().data[0]
 
