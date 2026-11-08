@@ -79,3 +79,25 @@ class TransferAdminRequest(BaseModel):
     target_user_id: int = Field(
         ..., description="권한을 넘길 구성원의 사용자 번호", examples=[2]
     )
+
+
+class MemoCreateRequest(BaseModel):
+    """모임 메모 작성 요청. (MEET-06)"""
+
+    content: str = Field(..., description="메모 내용", examples=["이번 주 금요일 발표 리허설"])
+
+
+class MemoUpdateRequest(BaseModel):
+    """모임 메모 수정 요청. (MEET-06)"""
+
+    content: str = Field(..., description="수정할 메모 내용", examples=["리허설 → 토요일로 변경"])
+
+
+class MemoOut(BaseModel):
+    """모임 메모 정보."""
+
+    memo_id: int = Field(..., description="메모 고유 번호", examples=[1])
+    meeting_id: int = Field(..., description="모임 번호", examples=[1])
+    author_user_id: int = Field(..., description="작성자 사용자 번호", examples=[1])
+    content: str = Field(..., description="메모 내용")
+    created_at: str | None = Field(None, description="작성 시각")
