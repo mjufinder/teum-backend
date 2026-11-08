@@ -28,3 +28,28 @@ class BallotOut(BaseModel):
     candidate_ids: list[int] = Field(
         ..., description="선택한 후보 id 목록", examples=[[1, 2]]
     )
+
+
+class CandidateTally(BaseModel):
+    """후보별 득표 집계. (VOTE-02)"""
+
+    candidate_id: int = Field(..., examples=[1])
+    rank_no: int = Field(..., description="묶음 내 추천 순위", examples=[1])
+    day_of_week: int = Field(..., description="월=0 ~ 일=6", examples=[0])
+    start_time: str = Field(..., examples=["10:00:00"])
+    end_time: str = Field(..., examples=["11:00:00"])
+    available_count: int = Field(..., description="참석 가능 인원", examples=[2])
+    votes: int = Field(..., description="득표수", examples=[3])
+
+
+class TallyOut(BaseModel):
+    """후보 묶음 투표 집계 결과. (VOTE-02)"""
+
+    set_id: int = Field(..., examples=[1])
+    vote_status: str = Field(..., description="OPEN / CLOSED / DISCARDED", examples=["OPEN"])
+    total_ballots: int = Field(..., description="제출된 투표지 수", examples=[5])
+    no_available_count: int = Field(..., description="'참석 가능 후보 없음' 수", examples=[1])
+    candidates: list[CandidateTally]
+    winner_candidate_id: int | None = Field(
+        None, description="현재 1위 후보 (동률 시 참석 인원 > 추천 순위)", examples=[1]
+    )

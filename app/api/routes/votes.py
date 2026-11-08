@@ -7,6 +7,7 @@ from app.api.deps import (
     get_meeting_member,
     get_vote_ballot_repository,
     get_vote_selection_repository,
+    require_meeting_admin,
 )
 from app.domain.meeting_member import MeetingMember
 from app.domain.vote_ballot import VoteBallot
@@ -15,9 +16,26 @@ from app.repositories.candidate_set_repository import CandidateSetRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.vote_ballot_repository import VoteBallotRepository
 from app.repositories.vote_selection_repository import VoteSelectionRepository
-from app.schemas.vote import BallotOut, VoteRequest
+from app.schemas.vote import BallotOut, CandidateTally, TallyOut, VoteRequest
 
 router = APIRouter(prefix="/meetings", tags=["votes"])
+
+
+def _get_set_for_meeting(
+    meeting_id: int,
+    set_id: int,
+    set_repo: CandidateSetRepository,
+    run_repo: MatchingRunRepository,
+) -> dict:
+    """후보 묶음이 해당 모임에 속하는지 검증 후 반환. 없으면 404."""
+    cset = set_repo.find_by_id(set_id)
+    if cset is not None:
+        run = run_repo.find_by_id(cset["run_id"])
+        if run is not None and run["meeting_id"] == meeting_id:
+            return cset
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="후보 묶음을 찾을 수 없습니다."
+    )
 
 
 def _get_open_set_for_meeting(
@@ -27,21 +45,48 @@ def _get_open_set_for_meeting(
     run_repo: MatchingRunRepository,
 ) -> dict:
     """후보 묶음이 해당 모임에 속하고 투표 진행중(OPEN)인지 검증 후 반환."""
-    cset = set_repo.find_by_id(set_id)
-    if cset is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="후보 묶음을 찾을 수 없습니다."
-        )
-    run = run_repo.find_by_id(cset["run_id"])
-    if run is None or run["meeting_id"] != meeting_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="후보 묶음을 찾을 수 없습니다."
-        )
+    cset = _get_set_for_meeting(meeting_id, set_id, set_repo, run_repo)
     if cset["vote_status"] != "OPEN":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="투표가 종료된 후보 묶음입니다."
         )
     return cset
+
+
+def _build_tally(
+    cset: dict,
+    candidate_repo: CandidateRepository,
+    ballot_repo: VoteBallotRepository,
+) -> TallyOut:
+    """후보별 득표를 집계하고 1위(동률 시 참석 인원 > 추천 순위)를 도출한다."""
+    set_id = cset["id"]
+    rows = []
+    for c in candidate_repo.find_by_set(set_id):
+        rows.append(
+            {
+                "candidate_id": c["id"],
+                "rank_no": c["rank_no"],
+                "day_of_week": c["day_of_week"],
+                "start_time": str(c["start_time"]),
+                "end_time": str(c["end_time"]),
+                "available_count": c["available_count"],
+                "votes": candidate_repo.count_votes(c["id"]),
+            }
+        )
+    ballots = ballot_repo.find_by_set(set_id)
+    winner = None
+    if rows:
+        winner = max(
+            rows, key=lambda r: (r["votes"], r["available_count"], -r["rank_no"])
+        )["candidate_id"]
+    return TallyOut(
+        set_id=set_id,
+        vote_status=cset["vote_status"],
+        total_ballots=len(ballots),
+        no_available_count=sum(1 for b in ballots if b["no_available"]),
+        candidates=[CandidateTally(**r) for r in rows],
+        winner_candidate_id=winner,
+    )
 
 
 @router.post(
@@ -123,3 +168,54 @@ def submit_vote(
         no_available=ballot.no_available,
         candidate_ids=selected,
     )
+
+
+@router.get(
+    "/{meeting_id}/candidate-sets/{set_id}/tally",
+    response_model=TallyOut,
+    summary="투표 집계",
+    responses={403: {"description": "구성원 아님"}, 404: {"description": "후보 묶음 없음"}},
+)
+def get_tally(
+    meeting_id: int,
+    set_id: int,
+    _member: MeetingMember = Depends(get_meeting_member),
+    set_repo: CandidateSetRepository = Depends(get_candidate_set_repository),
+    run_repo: MatchingRunRepository = Depends(get_matching_run_repository),
+    candidate_repo: CandidateRepository = Depends(get_candidate_repository),
+    ballot_repo: VoteBallotRepository = Depends(get_vote_ballot_repository),
+) -> TallyOut:
+    """후보 묶음의 실시간 득표 집계와 현재 1위를 반환한다 (VOTE-02, 구성원만)."""
+    cset = _get_set_for_meeting(meeting_id, set_id, set_repo, run_repo)
+    return _build_tally(cset, candidate_repo, ballot_repo)
+
+
+@router.post(
+    "/{meeting_id}/candidate-sets/{set_id}/close",
+    response_model=TallyOut,
+    summary="투표 마감 및 최종 후보 도출",
+    responses={
+        403: {"description": "관리자 아님"},
+        404: {"description": "후보 묶음 없음"},
+        409: {"description": "이미 마감/폐기된 묶음"},
+    },
+)
+def close_vote(
+    meeting_id: int,
+    set_id: int,
+    _admin: MeetingMember = Depends(require_meeting_admin),
+    set_repo: CandidateSetRepository = Depends(get_candidate_set_repository),
+    run_repo: MatchingRunRepository = Depends(get_matching_run_repository),
+    candidate_repo: CandidateRepository = Depends(get_candidate_repository),
+    ballot_repo: VoteBallotRepository = Depends(get_vote_ballot_repository),
+) -> TallyOut:
+    """투표를 마감하고(vote_status=CLOSED) 최종 집계·1위를 반환한다 (VOTE-02, 관리자만)."""
+    cset = _get_set_for_meeting(meeting_id, set_id, set_repo, run_repo)
+    if cset["vote_status"] != "OPEN":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 마감되었거나 폐기된 후보 묶음입니다.",
+        )
+    set_repo.update(set_id, {"vote_status": "CLOSED"})
+    cset["vote_status"] = "CLOSED"
+    return _build_tally(cset, candidate_repo, ballot_repo)
