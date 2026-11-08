@@ -7,6 +7,7 @@ from app.api.routes import (
     meeting_memos,
     meetings,
     timetable,
+    votes,
 )
 
 # 모든 라우터를 여기에 등록합니다.
@@ -16,5 +17,6 @@ api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(meetings.router)
 api_router.include_router(meeting_memos.router)
+api_router.include_router(votes.router)
 api_router.include_router(timetable.router)
 api_router.include_router(candidates.router)

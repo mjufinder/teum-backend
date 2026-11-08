@@ -12,8 +12,11 @@ from supabase import Client
 from app.core.supabase import get_supabase
 from app.domain.meeting_member import MeetingMember
 from app.domain.user import User
+from app.repositories.candidate_repository import CandidateRepository
 from app.repositories.candidate_set_repository import CandidateSetRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
+from app.repositories.vote_ballot_repository import VoteBallotRepository
+from app.repositories.vote_selection_repository import VoteSelectionRepository
 from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_memo_repository import MeetingMemoRepository
 from app.repositories.meeting_repository import MeetingRepository
@@ -40,6 +43,24 @@ def get_candidate_set_repository(
     db: Client = Depends(get_supabase),
 ) -> CandidateSetRepository:
     return CandidateSetRepository(db)
+
+
+def get_candidate_repository(
+    db: Client = Depends(get_supabase),
+) -> CandidateRepository:
+    return CandidateRepository(db)
+
+
+def get_vote_ballot_repository(
+    db: Client = Depends(get_supabase),
+) -> VoteBallotRepository:
+    return VoteBallotRepository(db)
+
+
+def get_vote_selection_repository(
+    db: Client = Depends(get_supabase),
+) -> VoteSelectionRepository:
+    return VoteSelectionRepository(db)
 
 
 def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:
