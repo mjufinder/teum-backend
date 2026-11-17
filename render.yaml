@@ -1,0 +1,28 @@
+# Render Blueprint — teum-backend (FastAPI)
+# 사용법: Render 대시보드 → New → Blueprint → 이 레포 연결
+# 비밀값(SUPABASE_KEY 등)과 Secret File(secrets.json)은 대시보드에서 직접 입력합니다.
+services:
+  - type: web
+    name: teum-backend
+    runtime: python
+    plan: free
+    region: singapore          # 한국에서 가장 가까운 무료 리전
+    branch: dev
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.4"
+      - key: DEBUG
+        value: "False"
+      # OCR 서비스 계정 키 → 대시보드에서 Secret File(/etc/secrets/secrets.json)로 업로드
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/secrets.json
+      # 아래 값들은 대시보드에서 직접 입력 (sync: false = 블루프린트가 덮어쓰지 않음)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
