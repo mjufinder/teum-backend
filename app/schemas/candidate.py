@@ -55,3 +55,23 @@ class MeetingAvailabilityOut(BaseModel):
     total_member_count: int
     registered_member_count: int
     slots: list[list[int]]
+
+
+class CustomCandidateCreateRequest(BaseModel):
+    """사용자가 주간 히트맵에서 직접 드래그해 추가하는 후보 시간."""
+
+    day_of_week: int = Field(ge=0, le=6, description="월=0 ~ 일=6")
+    start_time: time
+    end_time: time
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        if self.start_time.tzinfo is not None or self.end_time.tzinfo is not None:
+            raise ValueError("시간에는 UTC 오프셋을 넣지 않습니다.")
+        if not time(9) <= self.start_time < self.end_time <= time(22):
+            raise ValueError("후보 시간은 09:00 ~ 22:00 범위여야 합니다.")
+        if self.start_time.minute not in (0, 30) or self.end_time.minute not in (0, 30):
+            raise ValueError("30분 단위로만 선택할 수 있습니다.")
+        if self.start_time.second != 0 or self.end_time.second != 0:
+            raise ValueError("초 단위는 지정할 수 없습니다.")
+        return self
