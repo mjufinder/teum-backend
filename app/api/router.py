@@ -5,6 +5,7 @@ from app.api.routes import (
     candidates,
     confirm,
     health,
+    invites,
     meeting_memos,
     meetings,
     share,
@@ -22,5 +23,6 @@ api_router.include_router(meeting_memos.router)
 api_router.include_router(votes.router)
 api_router.include_router(confirm.router)
 api_router.include_router(share.router)
+api_router.include_router(invites.router)
 api_router.include_router(timetable.router)
 api_router.include_router(candidates.router)
