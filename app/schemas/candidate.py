@@ -46,3 +46,12 @@ class CandidateSetOut(BaseModel):
     vote_status: Literal["OPEN", "CLOSED", "DISCARDED"]
     created_at: AwareDatetime
     candidates: list[CandidateOut]
+
+
+class MeetingAvailabilityOut(BaseModel):
+    """모임 활성 구성원의 주간 182칸(7일×26슬롯)별 참석 가능 member_id 목록."""
+
+    meeting_id: int
+    total_member_count: int
+    registered_member_count: int
+    slots: list[list[int]]

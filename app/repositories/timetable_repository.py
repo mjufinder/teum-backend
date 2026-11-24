@@ -32,3 +32,15 @@ class TimetableRepository:
         row = dict(result.data[0])
         user = row.pop("users")
         return {**row, **user}
+
+    def find_by_users(self, user_ids: list[int]) -> list[dict]:
+        """여러 사용자의 시간표 비트맵을 일괄 조회한다."""
+        if not user_ids:
+            return []
+        return (
+            self.db.table("timetables")
+            .select("user_id,class_bits,manual_bits")
+            .in_("user_id", user_ids)
+            .execute()
+            .data
+        )

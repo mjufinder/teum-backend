@@ -7,6 +7,7 @@ from app.api.deps import (
     get_meeting_member,
     get_meeting_member_repository,
     get_meeting_repository,
+    get_timetable_repository,
     get_user_repository,
     get_recommendation_repository,
     require_meeting_admin,
@@ -18,6 +19,7 @@ from app.repositories.candidate_set_repository import CandidateSetRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
+from app.repositories.timetable_repository import TimetableRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.recommendation_repository import RecommendationRepository
 from app.services.meeting_matching_service import add_member_and_match
@@ -192,15 +194,23 @@ def list_members(
     meeting_id: int,
     _member: MeetingMember = Depends(get_meeting_member),
     member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+    timetable_repo: TimetableRepository = Depends(get_timetable_repository),
 ) -> list[MemberOut]:
-    """모임의 활성 구성원 목록 (역할/상태 포함). 구성원만 조회 가능."""
+    """모임의 활성 구성원 목록 (역할/상태/시간표 등록 여부 포함). 구성원만 조회 가능."""
     rows = member_repo.find_active_by_meeting(meeting_id)
+    timetables = timetable_repo.find_by_users([r["user_id"] for r in rows])
+    registered_users = {
+        t["user_id"]
+        for t in timetables
+        if t.get("class_bits") is not None and t.get("manual_bits") is not None
+    }
     return [
         MemberOut(
             member_id=r["id"],
             user_id=r["user_id"],
             role=r["role"],
             status=r["status"],
+            has_timetable=r["user_id"] in registered_users,
         )
         for r in rows
     ]

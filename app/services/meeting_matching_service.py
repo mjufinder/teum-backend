@@ -8,8 +8,10 @@ from httpx import HTTPError
 from postgrest.exceptions import APIError
 
 from app.domain.timetable import Timetable
+from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.recommendation_repository import RecommendationRepository
-from app.schemas.candidate import CandidateInput
+from app.repositories.timetable_repository import TimetableRepository
+from app.schemas.candidate import CandidateInput, MeetingAvailabilityOut
 from app.schemas.meeting import MemberOut
 
 logger = logging.getLogger(__name__)
@@ -88,3 +90,43 @@ def add_member_and_match(
         }) from None
     row = prepared["member"]
     return MemberOut(member_id=row["id"], user_id=row["user_id"], role=row["role"], status=row["status"])
+
+
+def get_meeting_availability(
+    meeting_id: int,
+    member_repo: MeetingMemberRepository,
+    timetable_repo: TimetableRepository,
+) -> MeetingAvailabilityOut:
+    """모임 활성 구성원들의 주간 182칸별 참석 가능 member_id 목록을 집계한다."""
+    try:
+        members = member_repo.find_active_by_meeting(meeting_id)
+        user_ids = [m["user_id"] for m in members]
+        timetables = timetable_repo.find_by_users(user_ids)
+    except (APIError, HTTPError):
+        logger.exception("Meeting availability lookup failed")
+        raise HTTPException(503, "시간표 현황 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+
+    bits_by_user: dict[int, str] = {}
+    for row in timetables:
+        if row.get("class_bits") is not None and row.get("manual_bits") is not None:
+            bits_by_user[row["user_id"]] = Timetable(
+                row["class_bits"], row["manual_bits"]
+            ).available_bits
+
+    registered = sorted(
+        (m["id"], bits_by_user[m["user_id"]])
+        for m in members
+        if m["user_id"] in bits_by_user
+    )
+    total_slots = len(Timetable.DAYS) * Timetable.SLOTS_PER_DAY
+    slots = [
+        [member_id for member_id, bits in registered if bits[idx] == "1"]
+        for idx in range(total_slots)
+    ]
+
+    return MeetingAvailabilityOut(
+        meeting_id=meeting_id,
+        total_member_count=len(members),
+        registered_member_count=len(registered),
+        slots=slots,
+    )

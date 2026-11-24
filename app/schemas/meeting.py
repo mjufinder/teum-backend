@@ -63,6 +63,7 @@ class MemberOut(BaseModel):
     user_id: int = Field(..., description="사용자 번호", examples=[1])
     role: str = Field(..., description="ADMIN / MEMBER", examples=["ADMIN"])
     status: str = Field(..., description="ACTIVE / LEFT", examples=["ACTIVE"])
+    has_timetable: bool = Field(False, description="시간표 등록 여부")
 
 
 class AddMemberRequest(BaseModel):
