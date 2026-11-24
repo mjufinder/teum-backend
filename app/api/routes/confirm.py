@@ -117,6 +117,8 @@ def confirm_schedule(
         repo=confirmed_repo,
         candidate_repo=candidate_repo,
     )
+    if cset and cset.get("vote_status") == "OPEN":
+        set_repo.update(cset["id"], {"vote_status": "CLOSED"})
     return ConfirmResult(
         confirmed=True,
         recheck_passed=True,
