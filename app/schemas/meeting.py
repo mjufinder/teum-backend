@@ -26,6 +26,16 @@ class MeetingCreateRequest(BaseModel):
     )
 
 
+class ConfirmedSlotOut(BaseModel):
+    """모임에 확정된 일정 요약."""
+
+    candidate_id: int
+    day_of_week: int
+    start_time: time
+    end_time: time
+    confirmed_at: str
+
+
 class MeetingOut(BaseModel):
     """생성/조회된 모임 정보."""
 
@@ -39,6 +49,8 @@ class MeetingOut(BaseModel):
     travel_buffer_min: int
     min_duration_min: int
     needs_recalc: bool = Field(..., description="재계산 필요 상태", examples=[False])
+    share_token: str | None = Field(None, description="발급된 외부 공유 토큰")
+    confirmed_schedule: ConfirmedSlotOut | None = None
 
 
 class MeetingUpdateRequest(BaseModel):
