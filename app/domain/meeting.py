@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from app.repositories.meeting_repository import MeetingRepository
 
@@ -149,9 +149,13 @@ class Meeting:
         self._repo.update(self.meeting_id, changes)
 
     def create_invite(self) -> str:
-        """초대 코드 발급 → createInvite():String. 7일 유효."""
+        """초대 코드 발급 → createInvite():String. 7일 유효.
+
+        이미 코드가 있으면 새 코드로 바꿔 이전 링크를 무효화한다.
+        timestamptz 컬럼에 저장하므로 UTC 기준 시각을 쓴다.
+        """
         self.invite_code = secrets.token_urlsafe(8)
-        self.invite_expires_at = datetime.now() + self.INVITE_TTL
+        self.invite_expires_at = datetime.now(timezone.utc) + self.INVITE_TTL
         self._repo.update(
             self.meeting_id,
             {
@@ -160,6 +164,33 @@ class Meeting:
             },
         )
         return self.invite_code
+
+    def revoke_invite(self) -> None:
+        """초대 링크 끊기. 코드와 만료 시각을 지워 기존 링크로 참가할 수 없게 한다."""
+        self.invite_code = None
+        self.invite_expires_at = None
+        self._repo.update(
+            self.meeting_id, {"invite_code": None, "invite_expires_at": None}
+        )
+
+    def invite_expiry(self) -> datetime | None:
+        """초대 만료 시각을 UTC datetime 으로 돌려준다. 코드가 없으면 None."""
+        if self.invite_code is None or self.invite_expires_at is None:
+            return None
+        expires = self.invite_expires_at
+        if not isinstance(expires, datetime):
+            # Supabase 는 timestamptz 를 ISO 문자열로 돌려준다.
+            expires = datetime.fromisoformat(str(expires).replace("Z", "+00:00"))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return expires
+
+    def is_invite_valid(self, now: datetime | None = None) -> bool:
+        """초대 코드가 있고 아직 만료되지 않았는지 확인한다."""
+        expires = self.invite_expiry()
+        if expires is None:
+            return False
+        return (now or datetime.now(timezone.utc)) < expires
 
     def on_member_joined(self):
         """팀원 합류 시 공강 재계산 트리거 → onMemberJoined():MATCHING_RUN.
