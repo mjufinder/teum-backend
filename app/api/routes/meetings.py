@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import (
+    get_candidate_repository,
     get_candidate_set_repository,
+    get_confirmed_schedule_repository,
     get_current_user,
     get_matching_run_repository,
     get_meeting_member,
     get_meeting_member_repository,
     get_meeting_repository,
+    get_timetable_repository,
     get_user_repository,
     get_recommendation_repository,
     require_meeting_admin,
@@ -14,15 +17,19 @@ from app.api.deps import (
 from app.domain.meeting import Meeting
 from app.domain.meeting_member import MeetingMember
 from app.domain.user import User
+from app.repositories.candidate_repository import CandidateRepository
 from app.repositories.candidate_set_repository import CandidateSetRepository
+from app.repositories.confirmed_schedule_repository import ConfirmedScheduleRepository
 from app.repositories.matching_run_repository import MatchingRunRepository
 from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
+from app.repositories.timetable_repository import TimetableRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.recommendation_repository import RecommendationRepository
 from app.services.meeting_matching_service import add_member_and_match
 from app.schemas.meeting import (
     AddMemberRequest,
+    ConfirmedSlotOut,
     MeetingCreateRequest,
     MeetingOut,
     MeetingUpdateRequest,
@@ -33,7 +40,30 @@ from app.schemas.meeting import (
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
 
-def _row_to_meeting_out(row: dict) -> MeetingOut:
+def _resolve_confirmed_slot(
+    meeting_id: int,
+    confirmed_repo: ConfirmedScheduleRepository,
+    candidate_repo: CandidateRepository,
+) -> ConfirmedSlotOut | None:
+    confirmed = confirmed_repo.find_by_meeting(meeting_id)
+    if confirmed is None:
+        return None
+    cand = candidate_repo.find_by_id(confirmed["candidate_id"])
+    if cand is None:
+        return None
+    return ConfirmedSlotOut(
+        candidate_id=cand["id"],
+        day_of_week=cand["day_of_week"],
+        start_time=cand["start_time"],
+        end_time=cand["end_time"],
+        confirmed_at=str(confirmed["confirmed_at"]),
+    )
+
+
+def _row_to_meeting_out(
+    row: dict,
+    confirmed_schedule: ConfirmedSlotOut | None = None,
+) -> MeetingOut:
     return MeetingOut(
         meeting_id=row["id"],
         name=row["name"],
@@ -45,6 +75,8 @@ def _row_to_meeting_out(row: dict) -> MeetingOut:
         travel_buffer_min=row["travel_buffer_min"],
         min_duration_min=row["min_duration_min"],
         needs_recalc=row["needs_recalc"],
+        share_token=row.get("share_token"),
+        confirmed_schedule=confirmed_schedule,
     )
 
 
@@ -107,12 +139,19 @@ def list_my_meetings(
     current_user: User = Depends(get_current_user),
     meeting_repo: MeetingRepository = Depends(get_meeting_repository),
     member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+    confirmed_repo: ConfirmedScheduleRepository = Depends(get_confirmed_schedule_repository),
+    candidate_repo: CandidateRepository = Depends(get_candidate_repository),
 ) -> list[MeetingOut]:
     """현재 로그인 사용자가 활성 상태로 속한 모임 목록."""
     memberships = member_repo.find_active_by_user(current_user.user_id)
     meeting_ids = [m["meeting_id"] for m in memberships]
     rows = meeting_repo.find_by_ids(meeting_ids)
-    return [_row_to_meeting_out(r) for r in rows]
+    return [
+        _row_to_meeting_out(
+            r, _resolve_confirmed_slot(r["id"], confirmed_repo, candidate_repo)
+        )
+        for r in rows
+    ]
 
 
 @router.get(
@@ -125,10 +164,14 @@ def get_meeting(
     meeting_id: int,
     _member: MeetingMember = Depends(get_meeting_member),
     meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+    confirmed_repo: ConfirmedScheduleRepository = Depends(get_confirmed_schedule_repository),
+    candidate_repo: CandidateRepository = Depends(get_candidate_repository),
 ) -> MeetingOut:
     """모임 상세 조회. 해당 모임의 구성원만 조회할 수 있다."""
     row = meeting_repo.find_by_id(meeting_id)
-    return _row_to_meeting_out(row)
+    return _row_to_meeting_out(
+        row, _resolve_confirmed_slot(meeting_id, confirmed_repo, candidate_repo)
+    )
 
 
 @router.put(
@@ -192,15 +235,23 @@ def list_members(
     meeting_id: int,
     _member: MeetingMember = Depends(get_meeting_member),
     member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+    timetable_repo: TimetableRepository = Depends(get_timetable_repository),
 ) -> list[MemberOut]:
-    """모임의 활성 구성원 목록 (역할/상태 포함). 구성원만 조회 가능."""
+    """모임의 활성 구성원 목록 (역할/상태/시간표 등록 여부 포함). 구성원만 조회 가능."""
     rows = member_repo.find_active_by_meeting(meeting_id)
+    timetables = timetable_repo.find_by_users([r["user_id"] for r in rows])
+    registered_users = {
+        t["user_id"]
+        for t in timetables
+        if t.get("class_bits") is not None and t.get("manual_bits") is not None
+    }
     return [
         MemberOut(
             member_id=r["id"],
             user_id=r["user_id"],
             role=r["role"],
             status=r["status"],
+            has_timetable=r["user_id"] in registered_users,
         )
         for r in rows
     ]

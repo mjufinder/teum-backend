@@ -87,6 +87,8 @@ class PublicScheduleOut(BaseModel):
     """비회원용 확정 일정 읽기전용 조회 결과. (VOTE-04)"""
 
     meeting_name: str = Field(..., examples=["캡스톤 2조 정기회의"])
+    description: str | None = Field(None, description="모임 설명", examples=["주간 스프린트 회의"])
+    member_count: int = Field(0, description="참여 인원 수", examples=[4])
     day_of_week: int = Field(..., description="월=0 ~ 일=6", examples=[0])
     start_time: str = Field(..., examples=["10:00:00"])
     end_time: str = Field(..., examples=["11:00:00"])

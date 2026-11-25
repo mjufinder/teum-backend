@@ -8,9 +8,21 @@ from httpx import HTTPError
 from postgrest.exceptions import APIError
 
 from app.domain.timetable import Timetable
+from app.repositories.candidate_repository import CandidateRepository
+from app.repositories.candidate_set_repository import CandidateSetRepository
+from app.repositories.matching_run_repository import MatchingRunRepository
+from app.repositories.meeting_member_repository import MeetingMemberRepository
+from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.recommendation_repository import RecommendationRepository
-from app.schemas.candidate import CandidateInput
+from app.repositories.timetable_repository import TimetableRepository
+from app.schemas.candidate import (
+    CandidateInput,
+    CandidateSetOut,
+    CustomCandidateCreateRequest,
+    MeetingAvailabilityOut,
+)
 from app.schemas.meeting import MemberOut
+from app.services.recommendation_service import read_latest_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +100,184 @@ def add_member_and_match(
         }) from None
     row = prepared["member"]
     return MemberOut(member_id=row["id"], user_id=row["user_id"], role=row["role"], status=row["status"])
+
+
+def get_meeting_availability(
+    meeting_id: int,
+    member_repo: MeetingMemberRepository,
+    timetable_repo: TimetableRepository,
+) -> MeetingAvailabilityOut:
+    """모임 활성 구성원들의 주간 182칸별 참석 가능 member_id 목록을 집계한다."""
+    try:
+        members = member_repo.find_active_by_meeting(meeting_id)
+        user_ids = [m["user_id"] for m in members]
+        timetables = timetable_repo.find_by_users(user_ids)
+    except (APIError, HTTPError):
+        logger.exception("Meeting availability lookup failed")
+        raise HTTPException(503, "시간표 현황 조회에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+
+    bits_by_user: dict[int, str] = {}
+    for row in timetables:
+        if row.get("class_bits") is not None and row.get("manual_bits") is not None:
+            bits_by_user[row["user_id"]] = Timetable(
+                row["class_bits"], row["manual_bits"]
+            ).available_bits
+
+    registered = sorted(
+        (m["id"], bits_by_user[m["user_id"]])
+        for m in members
+        if m["user_id"] in bits_by_user
+    )
+    total_slots = len(Timetable.DAYS) * Timetable.SLOTS_PER_DAY
+    slots = [
+        [member_id for member_id, bits in registered if bits[idx] == "1"]
+        for idx in range(total_slots)
+    ]
+
+    return MeetingAvailabilityOut(
+        meeting_id=meeting_id,
+        total_member_count=len(members),
+        registered_member_count=len(registered),
+        slots=slots,
+    )
+
+
+def add_custom_candidate(
+    meeting_id: int,
+    body: CustomCandidateCreateRequest,
+    meeting_repo: MeetingRepository,
+    member_repo: MeetingMemberRepository,
+    timetable_repo: TimetableRepository,
+    run_repo: MatchingRunRepository,
+    set_repo: CandidateSetRepository,
+    candidate_repo: CandidateRepository,
+    rec_repo: RecommendationRepository,
+) -> CandidateSetOut:
+    """사용자가 직접 선택한 시간대를 현재 OPEN 후보 묶음에 추가한다 (rank_no >= 4)."""
+    try:
+        members = member_repo.find_active_by_meeting(meeting_id)
+        timetables = timetable_repo.find_by_users([m["user_id"] for m in members])
+        latest = rec_repo.find_latest(meeting_id)
+    except (APIError, HTTPError):
+        logger.exception("Custom candidate lookup failed")
+        raise HTTPException(503, "후보 추가 준비에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+
+    bits_by_user: dict[int, str] = {}
+    for row in timetables:
+        if row.get("class_bits") is not None and row.get("manual_bits") is not None:
+            bits_by_user[row["user_id"]] = Timetable(
+                row["class_bits"], row["manual_bits"]
+            ).available_bits
+
+    start_min = body.start_time.hour * 60 + body.start_time.minute
+    end_min = body.end_time.hour * 60 + body.end_time.minute
+    first_slot = (start_min - 540) // 30
+    last_slot = (end_min - 540) // 30
+    offset = body.day_of_week * Timetable.SLOTS_PER_DAY
+    available_ids = sorted(
+        m["id"]
+        for m in members
+        if m["user_id"] in bits_by_user
+        and "0" not in bits_by_user[m["user_id"]][offset + first_slot : offset + last_slot]
+    )
+
+    if latest is not None and latest["vote_status"] == "CLOSED":
+        raise HTTPException(409, "투표가 이미 마감되어 후보를 추가할 수 없습니다.")
+
+    try:
+        if latest is not None and latest["vote_status"] == "OPEN":
+            existing = latest.get("candidates", [])
+            for item in existing:
+                if (
+                    item["day_of_week"] == body.day_of_week
+                    and str(item["start_time"])[:5] == body.start_time.strftime("%H:%M")
+                    and str(item["end_time"])[:5] == body.end_time.strftime("%H:%M")
+                ):
+                    raise HTTPException(409, "이미 등록된 후보 시간입니다.")
+            next_rank = max([4, *(item["rank_no"] + 1 for item in existing)])
+            set_id = latest["set_id"]
+            if latest["result_status"] == "NO_CANDIDATE":
+                set_repo.update(set_id, {"result_status": "HAS_CANDIDATE"})
+        else:
+            meeting = meeting_repo.find_by_id(meeting_id)
+            if meeting is None:
+                raise HTTPException(404, "모임을 찾을 수 없습니다.")
+            run = run_repo.insert(
+                {
+                    "meeting_id": meeting_id,
+                    "trigger_type": "ADMIN_RECALC",
+                    "cond_snapshot": {
+                        "search_start_time": str(meeting["search_start_time"]),
+                        "search_end_time": str(meeting["search_end_time"]),
+                        "min_duration_min": meeting["min_duration_min"],
+                        "travel_buffer_min": meeting["travel_buffer_min"],
+                    },
+                    "total_member_count": len(members),
+                    "timetable_input_count": len(bits_by_user),
+                    "input_hash": "custom",
+                }
+            )
+            cset = set_repo.insert(
+                {
+                    "run_id": run["id"],
+                    "set_type": "RECOMMEND",
+                    "result_status": "HAS_CANDIDATE",
+                    "vote_status": "OPEN",
+                }
+            )
+            set_id = cset["id"]
+            next_rank = 4
+
+        candidate_repo.insert(
+            {
+                "set_id": set_id,
+                "rank_no": next_rank,
+                "day_of_week": body.day_of_week,
+                "start_time": body.start_time.isoformat(),
+                "end_time": body.end_time.isoformat(),
+                "available_count": len(available_ids),
+                "available_member_ids": available_ids,
+            }
+        )
+    except HTTPException:
+        raise
+    except (APIError, HTTPError):
+        logger.exception("Custom candidate insert failed")
+        raise HTTPException(503, "후보 시간 추가에 실패했습니다. 잠시 후 다시 시도해 주세요.") from None
+
+    return read_latest_candidates(meeting_id, rec_repo)
+
+
+def delete_custom_candidate(
+    meeting_id: int,
+    candidate_id: int,
+    run_repo: MatchingRunRepository,
+    set_repo: CandidateSetRepository,
+    candidate_repo: CandidateRepository,
+    rec_repo: RecommendationRepository,
+) -> CandidateSetOut:
+    """직접 추가한 후보 시간(rank_no > 3)을 삭제한다."""
+    try:
+        cand = candidate_repo.find_by_id(candidate_id)
+        if cand is None:
+            raise HTTPException(404, "후보 시간을 찾을 수 없습니다.")
+        cset = set_repo.find_by_id(cand["set_id"])
+        run = run_repo.find_by_id(cset["run_id"]) if cset is not None else None
+        if cset is None or run is None or run["meeting_id"] != meeting_id:
+            raise HTTPException(404, "후보 시간을 찾을 수 없습니다.")
+        if cand["rank_no"] <= 3:
+            raise HTTPException(400, "자동 추천 시간은 삭제할 수 없습니다.")
+        if cset["vote_status"] != "OPEN":
+            raise HTTPException(409, "진행 중인 투표에서만 후보 시간을 삭제할 수 있습니다.")
+
+        candidate_repo.delete(candidate_id)
+        remaining = candidate_repo.find_by_set(cset["id"])
+        if not remaining and cset["result_status"] == "HAS_CANDIDATE":
+            set_repo.update(cset["id"], {"result_status": "NO_CANDIDATE"})
+    except HTTPException:
+        raise
+    except (APIError, HTTPError):
+        logger.exception("Custom candidate delete failed")
+        raise HTTPException(409, "이미 확정되었거나 삭제할 수 없는 후보 시간입니다.") from None
+
+    return read_latest_candidates(meeting_id, rec_repo)

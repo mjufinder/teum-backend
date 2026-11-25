@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import (
     get_candidate_repository,
     get_confirmed_schedule_repository,
+    get_meeting_member_repository,
     get_meeting_repository,
     require_meeting_admin,
 )
 from app.domain.meeting_member import MeetingMember
 from app.repositories.candidate_repository import CandidateRepository
 from app.repositories.confirmed_schedule_repository import ConfirmedScheduleRepository
+from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.schemas.vote import PublicScheduleOut, ShareOut
 
@@ -56,6 +58,7 @@ def read_shared_schedule(
     meeting_repo: MeetingRepository = Depends(get_meeting_repository),
     confirmed_repo: ConfirmedScheduleRepository = Depends(get_confirmed_schedule_repository),
     candidate_repo: CandidateRepository = Depends(get_candidate_repository),
+    member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
 ) -> PublicScheduleOut:
     """공유 토큰으로 확정 일정을 읽기 전용 조회한다 (VOTE-04, 인증 불필요)."""
     not_found = HTTPException(
@@ -70,8 +73,11 @@ def read_shared_schedule(
     candidate = candidate_repo.find_by_id(confirmed["candidate_id"])
     if candidate is None:
         raise not_found
+    members = member_repo.find_active_by_meeting(meeting["id"])
     return PublicScheduleOut(
         meeting_name=meeting["name"],
+        description=meeting.get("description"),
+        member_count=len(members),
         day_of_week=candidate["day_of_week"],
         start_time=str(candidate["start_time"]),
         end_time=str(candidate["end_time"]),

@@ -45,3 +45,6 @@ class CandidateRepository:
             .execute()
             .data[0]
         )
+
+    def delete(self, candidate_id: int) -> None:
+        self.db.table(self.TABLE).delete().eq("id", candidate_id).execute()
