@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import (
     get_candidate_repository,
@@ -30,6 +32,8 @@ from app.services.meeting_matching_service import add_member_and_match
 from app.schemas.meeting import (
     AddMemberRequest,
     ConfirmedSlotOut,
+    InviteCodeOut,
+    InvitePreviewOut,
     MeetingCreateRequest,
     MeetingOut,
     MeetingUpdateRequest,
@@ -76,6 +80,7 @@ def _row_to_meeting_out(
         min_duration_min=row["min_duration_min"],
         needs_recalc=row["needs_recalc"],
         share_token=row.get("share_token"),
+        invite_code=row.get("invite_code"),
         confirmed_schedule=confirmed_schedule,
     )
 
@@ -374,3 +379,76 @@ def delete_meeting(
     """모임을 삭제한다 (MEET-05, 관리자만). Soft Delete 로 처리한다."""
     meeting = Meeting._from_row(meeting_repo.find_by_id(meeting_id), meeting_repo)
     meeting.delete()
+
+
+# ── 초대 링크 (MEET-08) ─────────────────────────────────────────────
+
+@router.post(
+    "/{meeting_id}/invite-code",
+    response_model=InviteCodeOut,
+    summary="초대 코드 발급/재발급 (관리자만)",
+    responses={403: {"description": "관리자 아님"}, 404: {"description": "모임 없음"}},
+)
+def issue_invite_code(
+    meeting_id: int,
+    request: Request,
+    _admin: MeetingMember = Depends(require_meeting_admin),
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+) -> InviteCodeOut:
+    """모임 초대 코드를 발급(또는 재발급)한다 (MEET-08, 관리자만).
+
+    8자리 URL-safe 토큰을 생성해 DB에 저장하고 반환한다.
+    재발급하면 이전 코드는 무효가 된다.
+    """
+    code = secrets.token_urlsafe(6)
+    meeting_repo.update(meeting_id, {"invite_code": code})
+    base = str(request.base_url).rstrip("/")
+    return InviteCodeOut(invite_code=code, invite_url=f"{base}/join/{code}")
+
+
+@router.get(
+    "/join/{invite_code}",
+    response_model=InvitePreviewOut,
+    summary="초대 코드로 모임 미리보기 (비인증)",
+    responses={404: {"description": "유효하지 않은 초대 코드"}},
+)
+def preview_invite(
+    invite_code: str,
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+    member_repo: MeetingMemberRepository = Depends(get_meeting_member_repository),
+) -> InvitePreviewOut:
+    """초대 코드로 모임 기본 정보를 조회한다 (로그인 불필요)."""
+    row = meeting_repo.find_by_invite_code(invite_code)
+    if row is None:
+        raise HTTPException(status_code=404, detail="유효하지 않은 초대 링크예요.")
+    members = member_repo.find_active_by_meeting(row["id"])
+    return InvitePreviewOut(
+        meeting_id=row["id"],
+        name=row["name"],
+        description=row.get("description"),
+        member_count=len(members),
+    )
+
+
+@router.post(
+    "/join/{invite_code}",
+    response_model=MemberOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="초대 코드로 모임 참가 (인증 필요)",
+    responses={
+        404: {"description": "유효하지 않은 초대 코드"},
+        409: {"description": "이미 참가한 모임"},
+        503: {"description": "참가 처리 실패"},
+    },
+)
+def join_by_invite(
+    invite_code: str,
+    current_user: User = Depends(get_current_user),
+    meeting_repo: MeetingRepository = Depends(get_meeting_repository),
+    recommendation_repo: RecommendationRepository = Depends(get_recommendation_repository),
+) -> MemberOut:
+    """초대 코드로 모임에 참가한다 (MEET-08)."""
+    row = meeting_repo.find_by_invite_code(invite_code)
+    if row is None:
+        raise HTTPException(status_code=404, detail="유효하지 않은 초대 링크예요.")
+    return add_member_and_match(row["id"], current_user.user_id, recommendation_repo)

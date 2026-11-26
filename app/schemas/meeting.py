@@ -50,6 +50,7 @@ class MeetingOut(BaseModel):
     min_duration_min: int
     needs_recalc: bool = Field(..., description="재계산 필요 상태", examples=[False])
     share_token: str | None = Field(None, description="발급된 외부 공유 토큰")
+    invite_code: str | None = Field(None, description="발급된 모임 초대 코드")
     confirmed_schedule: ConfirmedSlotOut | None = None
 
 
@@ -104,6 +105,22 @@ class MemoUpdateRequest(BaseModel):
     """모임 메모 수정 요청. (MEET-06)"""
 
     content: str = Field(..., description="수정할 메모 내용", examples=["리허설 → 토요일로 변경"])
+
+
+class InviteCodeOut(BaseModel):
+    """초대 코드 발급 응답."""
+
+    invite_code: str = Field(..., description="모임 초대 코드", examples=["aB3xK9"])
+    invite_url: str = Field(..., description="초대 링크 URL")
+
+
+class InvitePreviewOut(BaseModel):
+    """초대 링크 미리보기 (비인증)."""
+
+    meeting_id: int
+    name: str
+    description: str | None = None
+    member_count: int
 
 
 class MemoOut(BaseModel):

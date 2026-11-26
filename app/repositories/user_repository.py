@@ -27,6 +27,18 @@ class UserRepository:
         res = self.db.table(self.TABLE).select("*").eq("id", user_id).execute()
         return res.data[0] if res.data else None
 
+    def search_by_email_prefix(self, prefix: str, limit: int = 7) -> list[dict]:
+        """이메일 prefix로 사용자 검색 (팀원 초대 자동완성용)."""
+        res = (
+            self.db.table(self.TABLE)
+            .select("id, name, email")
+            .ilike("email", f"{prefix}%")
+            .is_("deleted_at", "null")
+            .limit(limit)
+            .execute()
+        )
+        return res.data or []
+
     def find_by_email(self, email: str) -> dict | None:
         """이메일로 사용자 조회 (탈퇴하지 않은 사용자). 없으면 None. (팀원 추가용)"""
         res = (
