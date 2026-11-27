@@ -22,6 +22,7 @@ from app.repositories.meeting_member_repository import MeetingMemberRepository
 from app.repositories.meeting_memo_repository import MeetingMemoRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.notice_repository import NoticeRepository
 from app.repositories.timetable_repository import TimetableRepository
 from app.repositories.recommendation_repository import RecommendationRepository
 
@@ -72,6 +73,10 @@ def get_confirmed_schedule_repository(
 
 def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:
     return UserRepository(db)
+
+
+def get_notice_repository(db: Client = Depends(get_supabase)) -> NoticeRepository:
+    return NoticeRepository(db)
 
 
 def get_meeting_repository(db: Client = Depends(get_supabase)) -> MeetingRepository:
@@ -136,6 +141,13 @@ def get_current_user(
     if user.deleted_at is not None:
         raise unauthorized
     return user
+
+
+def require_service_admin(current_user: User = Depends(get_current_user)) -> User:
+    """서비스 관리자만 허용한다. 프로필·시간표 등록 여부와 무관하다."""
+    if current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="서비스 관리자만 사용할 수 있습니다.")
+    return current_user
 
 
 def get_meeting_member(

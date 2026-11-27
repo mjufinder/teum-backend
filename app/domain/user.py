@@ -20,6 +20,7 @@ class User:
         auth_uid: str,
         email: str | None,
         name: str,
+        role: str = "USER",
         major: str | None = None,
         profile_completed: bool = False,
         timetable_registered_at: datetime | None = None,
@@ -31,6 +32,7 @@ class User:
         self.auth_uid = auth_uid                             # UUID (Supabase auth.users.id)
         self.email = email                                   # String (인증 이메일)
         self.name = name                                     # String
+        self.role = role                                    # USER / ADMIN (서비스 권한)
         self.major = major                                   # String (온보딩 전이면 None)
         self.profile_completed = profile_completed           # Boolean
         self.timetable_registered_at = timetable_registered_at  # LocalDateTime
@@ -46,6 +48,7 @@ class User:
             auth_uid=row["auth_uid"],
             email=row.get("email"),
             name=row["name"],
+            role=row.get("role", "USER"),
             major=row.get("major"),
             profile_completed=row["profile_completed"],
             timetable_registered_at=row.get("timetable_registered_at"),

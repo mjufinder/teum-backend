@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -6,6 +8,7 @@ class UserOut(BaseModel):
 
     user_id: int = Field(..., description="사용자 고유 번호", examples=[1])
     name: str = Field(..., description="사용자 이름", examples=["한규진"])
+    role: Literal["USER", "ADMIN"] = Field("USER", description="서비스 권한")
     major: str | None = Field(
         None, description="전공 (온보딩 전이면 null)", examples=["컴퓨터공학전공"]
     )

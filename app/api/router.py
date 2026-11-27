@@ -8,6 +8,7 @@ from app.api.routes import (
     invites,
     meeting_memos,
     meetings,
+    notices,
     share,
     timetable,
     votes,
@@ -18,6 +19,7 @@ from app.api.routes import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(notices.router)
 api_router.include_router(meetings.router)
 api_router.include_router(meeting_memos.router)
 api_router.include_router(votes.router)
