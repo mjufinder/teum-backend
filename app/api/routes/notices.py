@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
-from app.api.deps import get_notice_repository, require_service_admin
+from app.api.deps import (
+    get_current_user, get_notice_comment_repository, get_notice_repository, require_service_admin,
+)
+from app.domain.notice_comment import NoticeComment
+from app.repositories.notice_comment_repository import NoticeCommentRepository
+from app.schemas.notice_comment import NoticeCommentCreateRequest, NoticeCommentOut
 from app.domain.notice import Notice
 from app.domain.user import User
 from app.repositories.notice_repository import NoticeRepository
@@ -9,6 +14,26 @@ from app.schemas.notice import (
 )
 
 router = APIRouter(prefix="/notices", tags=["notices"])
+
+
+@router.post(
+    "/{notice_id}/comments", response_model=NoticeCommentOut,
+    status_code=status.HTTP_201_CREATED, summary="공지 댓글 작성",
+    responses={401: {"description": "인증 필요"}, 404: {"description": "공지가 없거나 삭제됨"}},
+)
+def create_notice_comment(
+    payload: NoticeCommentCreateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentOut:
+    """로그인 사용자는 댓글을 작성할 수 있다. 프로필·시간표 등록은 불필요하다."""
+    comment = NoticeComment.write(
+        notice_id=notice_id, author_user_id=current_user.user_id, content=payload.content, repo=repo,
+    )
+    if comment is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    return NoticeCommentOut.model_validate(comment, from_attributes=True)
 
 
 @router.get("", response_model=NoticeListOut, summary="공지 목록 조회")

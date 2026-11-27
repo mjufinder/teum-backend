@@ -23,6 +23,7 @@ from app.repositories.meeting_memo_repository import MeetingMemoRepository
 from app.repositories.meeting_repository import MeetingRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.notice_repository import NoticeRepository
+from app.repositories.notice_comment_repository import NoticeCommentRepository
 from app.repositories.timetable_repository import TimetableRepository
 from app.repositories.recommendation_repository import RecommendationRepository
 
@@ -77,6 +78,10 @@ def get_user_repository(db: Client = Depends(get_supabase)) -> UserRepository:
 
 def get_notice_repository(db: Client = Depends(get_supabase)) -> NoticeRepository:
     return NoticeRepository(db)
+
+
+def get_notice_comment_repository(db: Client = Depends(get_supabase)) -> NoticeCommentRepository:
+    return NoticeCommentRepository(db)
 
 
 def get_meeting_repository(db: Client = Depends(get_supabase)) -> MeetingRepository:
