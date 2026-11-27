@@ -17,3 +17,18 @@ class NoticeOut(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+class NoticeListItem(BaseModel):
+    notice_id: int
+    author_user_id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NoticeListOut(BaseModel):
+    items: list[NoticeListItem]
+    total: int = Field(..., description="삭제되지 않은 전체 공지 수")
+    page: int
+    page_size: int
