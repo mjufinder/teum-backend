@@ -14,6 +14,7 @@ def _to_user_out(user: User) -> UserOut:
     return UserOut(
         user_id=user.user_id,
         name=user.name,
+        role=user.role,
         major=user.major,
         profile_completed=user.profile_completed,
     )

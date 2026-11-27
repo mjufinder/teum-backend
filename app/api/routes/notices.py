@@ -1,0 +1,210 @@
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+
+from app.api.deps import (
+    get_current_user, get_notice_comment_repository, get_notice_repository, require_service_admin,
+)
+from app.domain.notice_comment import NoticeComment
+from app.repositories.notice_comment_repository import NoticeCommentRepository
+from app.schemas.notice_comment import (
+    NoticeCommentCreateRequest, NoticeCommentListOut, NoticeCommentOut, NoticeCommentUpdateRequest,
+)
+from app.domain.notice import Notice
+from app.domain.user import User
+from app.repositories.notice_repository import NoticeRepository
+from app.schemas.notice import (
+    NoticeCreateRequest, NoticeListItem, NoticeListOut, NoticeOut, NoticeUpdateRequest,
+)
+
+router = APIRouter(prefix="/notices", tags=["notices"])
+
+
+@router.delete(
+    "/{notice_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT,
+    summary="공지 댓글 삭제",
+    responses={
+        401: {"description": "인증 필요"}, 403: {"description": "댓글 작성자 아님"},
+        404: {"description": "공지 또는 댓글이 없거나 삭제됨"},
+    },
+)
+def delete_notice_comment(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807),
+    comment_id: int = Path(..., ge=1, le=9223372036854775807),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> None:
+    """본인 댓글만 논리 삭제한다. 관리자도 타인의 댓글을 삭제할 수 없다."""
+    try:
+        deleted = NoticeComment.delete(
+            notice_id=notice_id, comment_id=comment_id,
+            author_user_id=current_user.user_id, repo=repo,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="공지 또는 댓글을 찾을 수 없습니다.")
+
+
+@router.patch(
+    "/{notice_id}/comments/{comment_id}", response_model=NoticeCommentOut, summary="공지 댓글 수정",
+    responses={
+        401: {"description": "인증 필요"}, 403: {"description": "댓글 작성자 아님"},
+        404: {"description": "공지 또는 댓글이 없거나 삭제됨"},
+    },
+)
+def update_notice_comment(
+    payload: NoticeCommentUpdateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807),
+    comment_id: int = Path(..., ge=1, le=9223372036854775807),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentOut:
+    """본인 댓글만 수정한다. 관리자도 다른 사용자의 댓글을 수정할 수 없다."""
+    try:
+        comment = NoticeComment.update(
+            notice_id=notice_id, comment_id=comment_id,
+            author_user_id=current_user.user_id, content=payload.content, repo=repo,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if comment is None:
+        raise HTTPException(status_code=404, detail="공지 또는 댓글을 찾을 수 없습니다.")
+    return NoticeCommentOut.model_validate(comment, from_attributes=True)
+
+
+@router.get(
+    "/{notice_id}/comments", response_model=NoticeCommentListOut, summary="공지 댓글 목록 조회",
+    responses={404: {"description": "공지가 없거나 삭제됨"}},
+)
+def list_notice_comments(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    page: int = Query(1, ge=1, description="페이지 번호 (1부터 시작)"),
+    page_size: int = Query(20, ge=1, le=100, description="페이지당 댓글 수"),
+    notice_repo: NoticeRepository = Depends(get_notice_repository),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentListOut:
+    """로그인 없이 댓글을 오래된 순으로 조회한다. 삭제된 공지와 댓글은 제외한다."""
+    if notice_repo.find_by_id(notice_id) is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    rows, total = repo.find_page(notice_id=notice_id, page=page, page_size=page_size)
+    return NoticeCommentListOut(
+        items=[NoticeCommentOut(
+            comment_id=row["id"], notice_id=row["notice_id"],
+            author_user_id=row["author_user_id"], content=row["content"],
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        ) for row in rows],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.post(
+    "/{notice_id}/comments", response_model=NoticeCommentOut,
+    status_code=status.HTTP_201_CREATED, summary="공지 댓글 작성",
+    responses={401: {"description": "인증 필요"}, 404: {"description": "공지가 없거나 삭제됨"}},
+)
+def create_notice_comment(
+    payload: NoticeCommentCreateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentOut:
+    """로그인 사용자는 댓글을 작성할 수 있다. 프로필·시간표 등록은 불필요하다."""
+    comment = NoticeComment.write(
+        notice_id=notice_id, author_user_id=current_user.user_id, content=payload.content, repo=repo,
+    )
+    if comment is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    return NoticeCommentOut.model_validate(comment, from_attributes=True)
+
+
+@router.get("", response_model=NoticeListOut, summary="공지 목록 조회")
+def list_notices(
+    page: int = Query(1, ge=1, description="페이지 번호 (1부터 시작)"),
+    page_size: int = Query(20, ge=1, le=100, description="페이지당 공지 수"),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeListOut:
+    """로그인 없이 공지를 조회한다. 삭제된 공지를 제외하고 최신순으로 반환한다."""
+    rows, total = repo.find_page(page=page, page_size=page_size)
+    return NoticeListOut(
+        items=[NoticeListItem(
+            notice_id=row["id"], author_user_id=row["author_user_id"],
+            title=row["title"], created_at=row["created_at"], updated_at=row["updated_at"],
+        ) for row in rows],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.get(
+    "/{notice_id}", response_model=NoticeOut, summary="공지 상세 조회",
+    responses={404: {"description": "공지가 없거나 삭제됨"}},
+)
+def read_notice(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeOut:
+    """로그인 없이 공지 본문을 조회한다. 삭제된 공지는 조회할 수 없다."""
+    row = repo.find_by_id(notice_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    return NoticeOut(
+        notice_id=row["id"], author_user_id=row["author_user_id"],
+        title=row["title"], content=row["content"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+@router.post(
+    "", response_model=NoticeOut, status_code=status.HTTP_201_CREATED,
+    summary="공지 작성",
+    responses={401: {"description": "인증 필요"}, 403: {"description": "관리자 권한 필요"}},
+)
+def create_notice(
+    payload: NoticeCreateRequest,
+    admin: User = Depends(require_service_admin),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeOut:
+    """서비스 관리자만 공지를 작성한다. 시간표·프로필 등록은 필요하지 않다."""
+    notice = Notice.write(
+        author_user_id=admin.user_id, title=payload.title, content=payload.content, repo=repo,
+    )
+    return NoticeOut.model_validate(notice, from_attributes=True)
+
+
+@router.delete(
+    "/{notice_id}", status_code=status.HTTP_204_NO_CONTENT, summary="공지 삭제",
+    responses={
+        401: {"description": "인증 필요"},
+        403: {"description": "관리자 권한 필요"},
+        404: {"description": "공지가 없거나 이미 삭제됨"},
+    },
+)
+def delete_notice(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    _admin: User = Depends(require_service_admin),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> None:
+    """관리자는 다른 관리자의 공지도 논리 삭제할 수 있다. 시간표 등록은 불필요하다."""
+    if not Notice.delete(notice_id=notice_id, repo=repo):
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+
+
+@router.patch(
+    "/{notice_id}", response_model=NoticeOut, summary="공지 수정",
+    responses={
+        401: {"description": "인증 필요"},
+        403: {"description": "관리자 권한 필요"},
+        404: {"description": "공지가 없거나 삭제됨"},
+    },
+)
+def update_notice(
+    payload: NoticeUpdateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    _admin: User = Depends(require_service_admin),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeOut:
+    """관리자는 다른 관리자의 공지도 수정할 수 있다. 생략된 필드는 유지한다."""
+    notice = Notice.update(
+        notice_id=notice_id, changes=payload.model_dump(exclude_unset=True), repo=repo,
+    )
+    if notice is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    return NoticeOut.model_validate(notice, from_attributes=True)
