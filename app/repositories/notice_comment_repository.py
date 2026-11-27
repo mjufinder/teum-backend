@@ -5,6 +5,22 @@ class NoticeCommentRepository:
     def __init__(self, db: Client):
         self.db = db
 
+    def find_page(
+        self, *, notice_id: int, page: int, page_size: int,
+    ) -> tuple[list[dict], int]:
+        offset = (page - 1) * page_size
+        result = (
+            self.db.table("notice_comments")
+            .select("id,notice_id,author_user_id,content,created_at,updated_at", count="exact")
+            .eq("notice_id", notice_id)
+            .is_("deleted_at", "null")
+            .order("created_at")
+            .order("id")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        return result.data, result.count
+
     def insert(self, *, notice_id: int, author_user_id: int, content: str) -> dict | None:
         """부모 공지를 잠그고 댓글을 작성한다. 없거나 삭제된 공지면 None."""
         result = self.db.rpc("create_notice_comment", {

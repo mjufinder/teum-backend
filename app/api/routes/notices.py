@@ -5,7 +5,9 @@ from app.api.deps import (
 )
 from app.domain.notice_comment import NoticeComment
 from app.repositories.notice_comment_repository import NoticeCommentRepository
-from app.schemas.notice_comment import NoticeCommentCreateRequest, NoticeCommentOut
+from app.schemas.notice_comment import (
+    NoticeCommentCreateRequest, NoticeCommentListOut, NoticeCommentOut,
+)
 from app.domain.notice import Notice
 from app.domain.user import User
 from app.repositories.notice_repository import NoticeRepository
@@ -14,6 +16,31 @@ from app.schemas.notice import (
 )
 
 router = APIRouter(prefix="/notices", tags=["notices"])
+
+
+@router.get(
+    "/{notice_id}/comments", response_model=NoticeCommentListOut, summary="공지 댓글 목록 조회",
+    responses={404: {"description": "공지가 없거나 삭제됨"}},
+)
+def list_notice_comments(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    page: int = Query(1, ge=1, description="페이지 번호 (1부터 시작)"),
+    page_size: int = Query(20, ge=1, le=100, description="페이지당 댓글 수"),
+    notice_repo: NoticeRepository = Depends(get_notice_repository),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentListOut:
+    """로그인 없이 댓글을 오래된 순으로 조회한다. 삭제된 공지와 댓글은 제외한다."""
+    if notice_repo.find_by_id(notice_id) is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    rows, total = repo.find_page(notice_id=notice_id, page=page, page_size=page_size)
+    return NoticeCommentListOut(
+        items=[NoticeCommentOut(
+            comment_id=row["id"], notice_id=row["notice_id"],
+            author_user_id=row["author_user_id"], content=row["content"],
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        ) for row in rows],
+        total=total, page=page, page_size=page_size,
+    )
 
 
 @router.post(

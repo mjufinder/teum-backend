@@ -16,3 +16,10 @@ class NoticeCommentOut(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+class NoticeCommentListOut(BaseModel):
+    items: list[NoticeCommentOut]
+    total: int = Field(..., description="해당 공지의 삭제되지 않은 전체 댓글 수")
+    page: int
+    page_size: int
