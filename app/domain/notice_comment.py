@@ -35,6 +35,15 @@ class NoticeComment:
         return cls._from_row(row) if row is not None else None
 
     @classmethod
+    def delete(
+        cls, *, notice_id: int, comment_id: int, author_user_id: int,
+        repo: NoticeCommentRepository,
+    ) -> bool:
+        return repo.delete(
+            notice_id=notice_id, comment_id=comment_id, author_user_id=author_user_id,
+        )
+
+    @classmethod
     def _from_row(cls, row: dict) -> "NoticeComment":
         return cls(
             comment_id=row["id"], notice_id=row["notice_id"],

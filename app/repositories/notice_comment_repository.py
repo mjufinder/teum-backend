@@ -6,6 +6,18 @@ class NoticeCommentRepository:
     def __init__(self, db: Client):
         self.db = db
 
+    def delete(self, *, notice_id: int, comment_id: int, author_user_id: int) -> bool:
+        try:
+            result = self.db.rpc("delete_notice_comment", {
+                "p_notice_id": notice_id, "p_comment_id": comment_id,
+                "p_author_user_id": author_user_id,
+            }).execute()
+        except APIError as exc:
+            if exc.code == "PT403":
+                raise PermissionError("댓글 작성자만 삭제할 수 있습니다.") from exc
+            raise
+        return bool(result.data)
+
     def update(
         self, *, notice_id: int, comment_id: int, author_user_id: int, content: str,
     ) -> dict | None:

@@ -18,6 +18,32 @@ from app.schemas.notice import (
 router = APIRouter(prefix="/notices", tags=["notices"])
 
 
+@router.delete(
+    "/{notice_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT,
+    summary="공지 댓글 삭제",
+    responses={
+        401: {"description": "인증 필요"}, 403: {"description": "댓글 작성자 아님"},
+        404: {"description": "공지 또는 댓글이 없거나 삭제됨"},
+    },
+)
+def delete_notice_comment(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807),
+    comment_id: int = Path(..., ge=1, le=9223372036854775807),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> None:
+    """본인 댓글만 논리 삭제한다. 관리자도 타인의 댓글을 삭제할 수 없다."""
+    try:
+        deleted = NoticeComment.delete(
+            notice_id=notice_id, comment_id=comment_id,
+            author_user_id=current_user.user_id, repo=repo,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="공지 또는 댓글을 찾을 수 없습니다.")
+
+
 @router.patch(
     "/{notice_id}/comments/{comment_id}", response_model=NoticeCommentOut, summary="공지 댓글 수정",
     responses={
