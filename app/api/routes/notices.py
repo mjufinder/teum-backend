@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.api.deps import get_notice_repository, require_service_admin
 from app.domain.notice import Notice
@@ -23,6 +23,25 @@ def list_notices(
             title=row["title"], created_at=row["created_at"], updated_at=row["updated_at"],
         ) for row in rows],
         total=total, page=page, page_size=page_size,
+    )
+
+
+@router.get(
+    "/{notice_id}", response_model=NoticeOut, summary="공지 상세 조회",
+    responses={404: {"description": "공지가 없거나 삭제됨"}},
+)
+def read_notice(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeOut:
+    """로그인 없이 공지 본문을 조회한다. 삭제된 공지는 조회할 수 없다."""
+    row = repo.find_by_id(notice_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    return NoticeOut(
+        notice_id=row["id"], author_user_id=row["author_user_id"],
+        title=row["title"], content=row["content"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
     )
 
 
