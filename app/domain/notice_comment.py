@@ -21,6 +21,21 @@ class NoticeComment:
         row = repo.insert(notice_id=notice_id, author_user_id=author_user_id, content=content)
         if row is None:
             return None
+        return cls._from_row(row)
+
+    @classmethod
+    def update(
+        cls, *, notice_id: int, comment_id: int, author_user_id: int, content: str,
+        repo: NoticeCommentRepository,
+    ) -> "NoticeComment | None":
+        row = repo.update(
+            notice_id=notice_id, comment_id=comment_id,
+            author_user_id=author_user_id, content=content,
+        )
+        return cls._from_row(row) if row is not None else None
+
+    @classmethod
+    def _from_row(cls, row: dict) -> "NoticeComment":
         return cls(
             comment_id=row["id"], notice_id=row["notice_id"],
             author_user_id=row["author_user_id"], content=row["content"],

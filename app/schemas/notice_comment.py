@@ -9,6 +9,10 @@ class NoticeCommentCreateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=1000)
 
 
+class NoticeCommentUpdateRequest(NoticeCommentCreateRequest):
+    """수정할 본문은 필수이며 작성자·공지 ID 변경은 허용하지 않는다."""
+
+
 class NoticeCommentOut(BaseModel):
     comment_id: int
     notice_id: int

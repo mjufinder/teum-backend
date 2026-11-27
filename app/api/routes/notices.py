@@ -6,7 +6,7 @@ from app.api.deps import (
 from app.domain.notice_comment import NoticeComment
 from app.repositories.notice_comment_repository import NoticeCommentRepository
 from app.schemas.notice_comment import (
-    NoticeCommentCreateRequest, NoticeCommentListOut, NoticeCommentOut,
+    NoticeCommentCreateRequest, NoticeCommentListOut, NoticeCommentOut, NoticeCommentUpdateRequest,
 )
 from app.domain.notice import Notice
 from app.domain.user import User
@@ -16,6 +16,33 @@ from app.schemas.notice import (
 )
 
 router = APIRouter(prefix="/notices", tags=["notices"])
+
+
+@router.patch(
+    "/{notice_id}/comments/{comment_id}", response_model=NoticeCommentOut, summary="공지 댓글 수정",
+    responses={
+        401: {"description": "인증 필요"}, 403: {"description": "댓글 작성자 아님"},
+        404: {"description": "공지 또는 댓글이 없거나 삭제됨"},
+    },
+)
+def update_notice_comment(
+    payload: NoticeCommentUpdateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807),
+    comment_id: int = Path(..., ge=1, le=9223372036854775807),
+    current_user: User = Depends(get_current_user),
+    repo: NoticeCommentRepository = Depends(get_notice_comment_repository),
+) -> NoticeCommentOut:
+    """본인 댓글만 수정한다. 관리자도 다른 사용자의 댓글을 수정할 수 없다."""
+    try:
+        comment = NoticeComment.update(
+            notice_id=notice_id, comment_id=comment_id,
+            author_user_id=current_user.user_id, content=payload.content, repo=repo,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if comment is None:
+        raise HTTPException(status_code=404, detail="공지 또는 댓글을 찾을 수 없습니다.")
+    return NoticeCommentOut.model_validate(comment, from_attributes=True)
 
 
 @router.get(
