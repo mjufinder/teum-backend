@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.repositories.notice_repository import NoticeRepository
 
@@ -30,6 +30,12 @@ class Notice:
     ) -> "Notice | None":
         row = repo.update(notice_id, changes)
         return cls._from_row(row) if row is not None else None
+
+    @classmethod
+    def delete(cls, *, notice_id: int, repo: NoticeRepository) -> bool:
+        """행을 보존하고 삭제 시각만 기록한다. 이미 삭제된 행은 변경하지 않는다."""
+        row = repo.update(notice_id, {"deleted_at": datetime.now(timezone.utc).isoformat()})
+        return row is not None
 
     @classmethod
     def _from_row(cls, row: dict) -> "Notice":

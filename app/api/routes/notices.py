@@ -64,6 +64,24 @@ def create_notice(
     return NoticeOut.model_validate(notice, from_attributes=True)
 
 
+@router.delete(
+    "/{notice_id}", status_code=status.HTTP_204_NO_CONTENT, summary="공지 삭제",
+    responses={
+        401: {"description": "인증 필요"},
+        403: {"description": "관리자 권한 필요"},
+        404: {"description": "공지가 없거나 이미 삭제됨"},
+    },
+)
+def delete_notice(
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    _admin: User = Depends(require_service_admin),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> None:
+    """관리자는 다른 관리자의 공지도 논리 삭제할 수 있다. 시간표 등록은 불필요하다."""
+    if not Notice.delete(notice_id=notice_id, repo=repo):
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+
+
 @router.patch(
     "/{notice_id}", response_model=NoticeOut, summary="공지 수정",
     responses={
