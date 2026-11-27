@@ -22,6 +22,17 @@ class Notice:
             "title": title,
             "content": content,
         })
+        return cls._from_row(row)
+
+    @classmethod
+    def update(
+        cls, *, notice_id: int, changes: dict, repo: NoticeRepository,
+    ) -> "Notice | None":
+        row = repo.update(notice_id, changes)
+        return cls._from_row(row) if row is not None else None
+
+    @classmethod
+    def _from_row(cls, row: dict) -> "Notice":
         return cls(
             notice_id=row["id"], author_user_id=row["author_user_id"],
             title=row["title"], content=row["content"],

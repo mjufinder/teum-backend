@@ -4,7 +4,9 @@ from app.api.deps import get_notice_repository, require_service_admin
 from app.domain.notice import Notice
 from app.domain.user import User
 from app.repositories.notice_repository import NoticeRepository
-from app.schemas.notice import NoticeCreateRequest, NoticeListItem, NoticeListOut, NoticeOut
+from app.schemas.notice import (
+    NoticeCreateRequest, NoticeListItem, NoticeListOut, NoticeOut, NoticeUpdateRequest,
+)
 
 router = APIRouter(prefix="/notices", tags=["notices"])
 
@@ -59,4 +61,27 @@ def create_notice(
     notice = Notice.write(
         author_user_id=admin.user_id, title=payload.title, content=payload.content, repo=repo,
     )
+    return NoticeOut.model_validate(notice, from_attributes=True)
+
+
+@router.patch(
+    "/{notice_id}", response_model=NoticeOut, summary="공지 수정",
+    responses={
+        401: {"description": "인증 필요"},
+        403: {"description": "관리자 권한 필요"},
+        404: {"description": "공지가 없거나 삭제됨"},
+    },
+)
+def update_notice(
+    payload: NoticeUpdateRequest,
+    notice_id: int = Path(..., ge=1, le=9223372036854775807, description="공지 ID"),
+    _admin: User = Depends(require_service_admin),
+    repo: NoticeRepository = Depends(get_notice_repository),
+) -> NoticeOut:
+    """관리자는 다른 관리자의 공지도 수정할 수 있다. 생략된 필드는 유지한다."""
+    notice = Notice.update(
+        notice_id=notice_id, changes=payload.model_dump(exclude_unset=True), repo=repo,
+    )
+    if notice is None:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
     return NoticeOut.model_validate(notice, from_attributes=True)
